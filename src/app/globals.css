@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/*  Lumière design tokens — warm beige + french blue, calm scholarly  */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* Surfaces */
+  --background: #faf8f4; /* warm beige page tint */
+  --surface: #ffffff; /* card surface */
+  --surface-muted: #f3efe7; /* sidebar, subtle panels */
+  --border: #e7e1d5;
+
+  /* Text */
+  --foreground: #1c1917; /* near-black warm */
+  --muted-foreground: #78716c;
+  --subtle-foreground: #a8a29e;
+
+  /* Accents */
+  --accent: #3b5ba9; /* french blue */
+  --accent-foreground: #ffffff;
+  --accent-soft: #eef1f9;
+  --accent-soft-strong: #dde4f3;
+
+  /* Semantic */
+  --success: #2f8f5b;
+  --success-soft: #e6f3ec;
+  --warning: #d4922d;
+  --warning-soft: #fbf1de;
+  --danger: #c0492f;
+  --danger-soft: #f7e7e1;
+
+  /* Highlights for inline error spans (used in S4 feedback view) */
+  --hl-grammar: #fde68a;
+  --hl-gender: #fbcfe8;
+  --hl-articles: #ddd6fe;
+  --hl-prepositions: #fecaca;
+  --hl-pronouns: #bbf7d0;
+  --hl-vocab: #bfdbfe;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-strong: var(--accent-soft-strong);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-source-serif), Georgia, "Times New Roman", serif;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Reading column typography — used in the Document Reader.
+   Generous line-height + slightly larger size = the "reading sanctuary". */
+.reading-prose {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  line-height: 1.75;
+  color: var(--foreground);
+}
+
+.reading-prose p {
+  margin-bottom: 1.25em;
+}
+
+.reading-prose p:last-child {
+  margin-bottom: 0;
+}
+
+/* Subtle scrollbar so it doesn't shout in the calm UI. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}

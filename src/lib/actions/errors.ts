@@ -1,0 +1,416 @@
+"use server";
+
+import { randomUUID } from "node:crypto";
+import { eq, and, desc, count, countDistinct, inArray, gte, asc, type SQL, sql } from "drizzle-orm";
+import { format, parseISO } from "date-fns";
+import { revalidatePath } from "next/cache";
+
+import { db } from "@/lib/db";
+import { errors, submissions, writingTasks, documents, rules, microDrills } from "@/lib/db/schema";
+import type { ErrorRecord, Rule, MicroDrill } from "@/lib/db/schema";
+import type { ErrorCategory } from "@/lib/taxonomy";
+import { ERROR_TAXONOMY } from "@/lib/taxonomy";
+import { evaluateMicroDrill } from "@/lib/ai/micro-drill";
+import type { MicroDrillFeedback } from "@/lib/ai/micro-drill";
+
+export type ErrorWithContext = ErrorRecord & {
+  submissionContentFr: string;
+  submissionId: string;
+  submittedAt: Date;
+  documentTitle: string | null;
+  documentId: string | null;
+  errorIndex: number;
+};
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                             */
+/* ------------------------------------------------------------------ */
+
+async function resolveSubmissionIds(documentId: string): Promise<string[] | null> {
+  const tasks = await db
+    .select({ id: writingTasks.id })
+    .from(writingTasks)
+    .where(eq(writingTasks.documentId, documentId));
+  if (tasks.length === 0) return [];
+
+  const taskIds = tasks.map((t) => t.id);
+  const subs = await db
+    .select({ id: submissions.id })
+    .from(submissions)
+    .where(inArray(submissions.taskId, taskIds));
+  return subs.map((s) => s.id);
+}
+
+/* ------------------------------------------------------------------ */
+/*  listErrors                                                          */
+/* ------------------------------------------------------------------ */
+
+export async function listErrors(opts?: {
+  category?: ErrorCategory;
+  subcategory?: string;
+  documentId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ErrorWithContext[]> {
+  const limit = opts?.limit ?? 50;
+  const offset = opts?.offset ?? 0;
+
+  let allowedSubmissionIds: string[] | null = null;
+  if (opts?.documentId) {
+    allowedSubmissionIds = await resolveSubmissionIds(opts.documentId);
+    if (allowedSubmissionIds !== null && allowedSubmissionIds.length === 0) return [];
+  }
+
+  const conditions: SQL[] = [];
+  if (opts?.category) conditions.push(eq(errors.category, opts.category));
+  if (opts?.subcategory) conditions.push(eq(errors.subcategory, opts.subcategory));
+  if (allowedSubmissionIds) conditions.push(inArray(errors.submissionId, allowedSubmissionIds));
+
+  const errorRows = await db
+    .select()
+    .from(errors)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(errors.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  if (errorRows.length === 0) return [];
+
+  // Fetch related submissions
+  const submissionIds = [...new Set(errorRows.map((e) => e.submissionId))];
+  const submissionRows = await db
+    .select()
+    .from(submissions)
+    .where(inArray(submissions.id, submissionIds));
+  const submissionMap = new Map(submissionRows.map((s) => [s.id, s]));
+
+  // Fetch related tasks
+  const taskIds = [...new Set(submissionRows.map((s) => s.taskId))];
+  const taskRows =
+    taskIds.length > 0
+      ? await db
+          .select()
+          .from(writingTasks)
+          .where(inArray(writingTasks.id, taskIds))
+      : [];
+  const taskMap = new Map(taskRows.map((t) => [t.id, t]));
+
+  // Fetch related documents
+  const docIds = [
+    ...new Set(taskRows.map((t) => t.documentId).filter(Boolean) as string[]),
+  ];
+  const docRows =
+    docIds.length > 0
+      ? await db
+          .select({ id: documents.id, title: documents.title })
+          .from(documents)
+          .where(inArray(documents.id, docIds))
+      : [];
+  const docMap = new Map(docRows.map((d) => [d.id, d.title]));
+
+  // Compute errorIndex: position within submission ordered by spanStart
+  const indexMaps = new Map<string, Map<string, number>>();
+  for (const subId of submissionIds) {
+    const allSubErrors = await db
+      .select({ id: errors.id, spanStart: errors.spanStart })
+      .from(errors)
+      .where(eq(errors.submissionId, subId))
+      .orderBy(errors.spanStart);
+    indexMaps.set(subId, new Map(allSubErrors.map((e, i) => [e.id, i])));
+  }
+
+  return errorRows.map((err) => {
+    const submission = submissionMap.get(err.submissionId);
+    const task = submission ? taskMap.get(submission.taskId) : undefined;
+    const documentId = task?.documentId ?? null;
+    const documentTitle = documentId ? (docMap.get(documentId) ?? null) : null;
+    const errorIndex = indexMaps.get(err.submissionId)?.get(err.id) ?? 0;
+
+    return {
+      ...err,
+      submissionContentFr: submission?.contentFr ?? "",
+      submissionId: err.submissionId,
+      submittedAt: submission?.submittedAt ?? err.createdAt,
+      documentTitle,
+      documentId,
+      errorIndex,
+    };
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  getErrorCounts                                                      */
+/* ------------------------------------------------------------------ */
+
+export async function getErrorCounts(opts?: {
+  documentId?: string;
+}): Promise<Record<ErrorCategory, number>> {
+  let allowedSubmissionIds: string[] | null = null;
+  if (opts?.documentId) {
+    allowedSubmissionIds = await resolveSubmissionIds(opts.documentId);
+    if (allowedSubmissionIds !== null && allowedSubmissionIds.length === 0) {
+      return Object.fromEntries(
+        Object.keys(ERROR_TAXONOMY).map((k) => [k, 0]),
+      ) as Record<ErrorCategory, number>;
+    }
+  }
+
+  const conditions: SQL[] = [];
+  if (allowedSubmissionIds) {
+    conditions.push(inArray(errors.submissionId, allowedSubmissionIds));
+  }
+
+  const rows = await db
+    .select({ category: errors.category, count: count() })
+    .from(errors)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .groupBy(errors.category);
+
+  const result = Object.fromEntries(
+    Object.keys(ERROR_TAXONOMY).map((k) => [k, 0]),
+  ) as Record<ErrorCategory, number>;
+
+  for (const row of rows) {
+    result[row.category as ErrorCategory] = Number(row.count);
+  }
+  return result;
+}
+
+/* ------------------------------------------------------------------ */
+/*  getProgressStats                                                    */
+/* ------------------------------------------------------------------ */
+
+export async function getProgressStats(): Promise<{
+  totalErrors: number;
+  totalSubmissions: number;
+}> {
+  const [errResult, subResult] = await Promise.all([
+    db.select({ count: count() }).from(errors),
+    db.select({ count: countDistinct(errors.submissionId) }).from(errors),
+  ]);
+  return {
+    totalErrors: Number(errResult[0]?.count ?? 0),
+    totalSubmissions: Number(subResult[0]?.count ?? 0),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  getMicroDrillsForError                                              */
+/* ------------------------------------------------------------------ */
+
+export async function getMicroDrillsForError(errorId: string): Promise<MicroDrill[]> {
+  return db
+    .select()
+    .from(microDrills)
+    .where(eq(microDrills.errorId, errorId))
+    .orderBy(desc(microDrills.createdAt));
+}
+
+/* ------------------------------------------------------------------ */
+/*  createMicroDrill                                                    */
+/* ------------------------------------------------------------------ */
+
+export async function createMicroDrill(
+  errorId: string,
+  responseFr: string,
+): Promise<MicroDrillFeedback> {
+  if (!responseFr.trim()) throw new Error("Response cannot be empty.");
+
+  const errorRow = await db
+    .select()
+    .from(errors)
+    .where(eq(errors.id, errorId))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+  if (!errorRow) throw new Error("Error not found.");
+
+  const normalised = responseFr.normalize("NFC");
+  const promptText = errorRow.microDrill ?? errorRow.explanationEn;
+
+  const feedback = await evaluateMicroDrill(
+    promptText,
+    errorRow.original,
+    errorRow.correction,
+    normalised,
+  );
+
+  await db.insert(microDrills).values({
+    id: randomUUID(),
+    errorId,
+    promptText,
+    responseFr: normalised,
+    feedbackJson: feedback,
+  });
+
+  revalidatePath("/progress");
+  return feedback;
+}
+
+/* ------------------------------------------------------------------ */
+/*  getRule                                                             */
+/* ------------------------------------------------------------------ */
+
+export async function getRule(ruleId: string): Promise<Rule | null> {
+  return db
+    .select()
+    .from(rules)
+    .where(eq(rules.id, ruleId))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+}
+
+/* ------------------------------------------------------------------ */
+/*  batchGetRules — fetch multiple rules in one query                  */
+/* ------------------------------------------------------------------ */
+
+export async function batchGetRules(ruleIds: string[]): Promise<Map<string, Rule>> {
+  if (ruleIds.length === 0) return new Map();
+  const rows = await db
+    .select()
+    .from(rules)
+    .where(inArray(rules.id, ruleIds));
+  return new Map(rows.map((r) => [r.id, r]));
+}
+
+/* ------------------------------------------------------------------ */
+/*  getDashboardStats                                                   */
+/* ------------------------------------------------------------------ */
+
+export async function getDashboardStats(): Promise<{
+  totalSubmissions: number;
+  totalErrors: number;
+  activeDays: number;
+  mostImprovedCategory: string | null;
+}> {
+  const [subResult, errResult, daysResult] = await Promise.all([
+    db.select({ count: count() }).from(submissions),
+    db.select({ count: count() }).from(errors),
+    db.select({
+      days: sql<number>`count(distinct date_trunc('day', ${submissions.submittedAt})::date)`,
+    }).from(submissions),
+  ]);
+
+  const totalSubmissions = Number(subResult[0]?.count ?? 0);
+  const totalErrors = Number(errResult[0]?.count ?? 0);
+  const activeDays = Number(daysResult[0]?.days ?? 0);
+
+  // Find most improved: compare last 30 days vs prior 30 days
+  const now = new Date();
+  const cutoff60 = new Date(now.getTime() - 60 * 86_400_000);
+  const cutoff30 = new Date(now.getTime() - 30 * 86_400_000);
+
+  const recentErrors = await db
+    .select({ category: errors.category, createdAt: errors.createdAt })
+    .from(errors)
+    .where(gte(errors.createdAt, cutoff60));
+
+  const prior = new Map<string, number>();
+  const current = new Map<string, number>();
+  for (const row of recentErrors) {
+    const map = row.createdAt >= cutoff30 ? current : prior;
+    map.set(row.category, (map.get(row.category) ?? 0) + 1);
+  }
+
+  let mostImprovedCategory: string | null = null;
+  let bestImprovement = 0;
+  for (const [cat, priorCount] of prior.entries()) {
+    const currentCount = current.get(cat) ?? 0;
+    const improvement = priorCount - currentCount;
+    if (improvement > bestImprovement) {
+      bestImprovement = improvement;
+      mostImprovedCategory = cat;
+    }
+  }
+
+  return { totalSubmissions, totalErrors, activeDays, mostImprovedCategory };
+}
+
+/* ------------------------------------------------------------------ */
+/*  getErrorTrend                                                       */
+/* ------------------------------------------------------------------ */
+
+export type TrendBucket = {
+  weekLabel: string;
+  [category: string]: number | string;
+};
+
+export async function getErrorTrend(windowDays: 30 | 90 | 365): Promise<TrendBucket[]> {
+  const startDate = new Date(Date.now() - windowDays * 86_400_000);
+
+  const rows = await db
+    .select({
+      week: sql<string>`date_trunc('week', ${errors.createdAt})::text`,
+      category: errors.category,
+      count: count(),
+    })
+    .from(errors)
+    .where(gte(errors.createdAt, startDate))
+    .groupBy(sql`date_trunc('week', ${errors.createdAt})`, errors.category)
+    .orderBy(asc(sql`date_trunc('week', ${errors.createdAt})`));
+
+  // Pivot: group by week ISO string
+  const weekMap = new Map<string, TrendBucket>();
+  for (const row of rows) {
+    if (!weekMap.has(row.week)) {
+      weekMap.set(row.week, { weekLabel: format(parseISO(row.week), "MMM d") });
+    }
+    weekMap.get(row.week)![row.category] = Number(row.count);
+  }
+
+  return Array.from(weekMap.values());
+}
+
+/* ------------------------------------------------------------------ */
+/*  getTopRecurringPatterns                                             */
+/* ------------------------------------------------------------------ */
+
+export type RecurringPattern = {
+  category: string;
+  subcategory: string;
+  subcategoryLabel: string;
+  count: number;
+  exampleOriginal: string;
+  exampleCorrection: string;
+  exampleExplanation: string;
+};
+
+export async function getTopRecurringPatterns(limit = 3): Promise<RecurringPattern[]> {
+  const groups = await db
+    .select({ category: errors.category, subcategory: errors.subcategory, count: count() })
+    .from(errors)
+    .groupBy(errors.category, errors.subcategory)
+    .orderBy(desc(count()))
+    .limit(limit);
+
+  const patterns: RecurringPattern[] = [];
+  for (const group of groups) {
+    const example = await db
+      .select({
+        original: errors.original,
+        correction: errors.correction,
+        explanationEn: errors.explanationEn,
+      })
+      .from(errors)
+      .where(and(eq(errors.category, group.category), eq(errors.subcategory, group.subcategory)))
+      .orderBy(desc(errors.createdAt))
+      .limit(1)
+      .then((r) => r[0] ?? null);
+
+    const categoryDef = ERROR_TAXONOMY[group.category as ErrorCategory];
+    const subcategoryLabel =
+      (categoryDef?.subcategories as Record<string, string>)?.[group.subcategory] ??
+      group.subcategory;
+
+    patterns.push({
+      category: group.category,
+      subcategory: group.subcategory,
+      subcategoryLabel,
+      count: Number(group.count),
+      exampleOriginal: example?.original ?? "",
+      exampleCorrection: example?.correction ?? "",
+      exampleExplanation: example?.explanationEn ?? "",
+    });
+  }
+
+  return patterns;
+}

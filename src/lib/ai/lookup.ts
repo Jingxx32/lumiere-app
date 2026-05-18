@@ -1,0 +1,51 @@
+"use server";
+
+import { z } from "zod";
+import { zodResponseFormat } from "openai/helpers/zod";
+import { CEFR_LEVELS } from "@/lib/cefr";
+import { openai, MODELS } from "./client";
+
+const LookupSchema = z.object({
+  pos: z.string(),
+  level: z.enum(CEFR_LEVELS),
+  translation: z.string(),
+  conjugation: z.string().nullable(),
+  in_context: z.string(),
+  examples: z.array(z.string()),
+});
+
+export type LookupResult = z.infer<typeof LookupSchema>;
+
+export async function lookupWord(
+  word: string,
+  sentenceContext: string,
+): Promise<LookupResult> {
+  const completion = await openai.chat.completions.parse({
+    model: MODELS.lookup,
+    messages: [
+      {
+        role: "system",
+        content: `You are a French language assistant helping an A2-B1 learner understand vocabulary in context.
+Analyse the given French word or phrase as it appears in the provided sentence.
+
+Fields to return:
+- pos: part of speech with transitivity or gender, e.g. "verb · trans.", "noun · fem.", "adjective", "adverb", "phrase"
+- level: CEFR level of the word (A1–C2)
+- translation: concise English translation for THIS context only — not a dictionary entry
+- conjugation: for VERBS ONLY, provide the présent indicatif as "je X · tu X · il/elle X · nous X · vous X · ils/elles X". Return null for non-verbs.
+- in_context: 1–2 sentences explaining WHY this word is used this specific way in the sentence — cover agreement, conjugation form, idiomatic usage, or construction. This is not a general definition.
+- examples: exactly 2 natural French sentences using the word in a similar way, different from the context sentence`,
+      },
+      {
+        role: "user",
+        content: `Word/phrase: "${word}"\n\nSentence context: "${sentenceContext}"`,
+      },
+    ],
+    response_format: zodResponseFormat(LookupSchema, "lookup"),
+    temperature: 0.3,
+  });
+
+  const result = completion.choices[0].message.parsed;
+  if (!result) throw new Error("No result from OpenAI lookup");
+  return result;
+}

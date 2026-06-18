@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Headphones, BookOpenText } from "lucide-react";
 import { getTcfLevelSummaries, listTcfSets, type TcfLevel } from "@/lib/actions/tcf";
 import { Card } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 
 const LEVEL_COLORS: Record<TcfLevel, { bg: string; text: string; border: string }> = {
   A1: { bg: "bg-success-soft", text: "text-success", border: "border-success/30" },
@@ -43,30 +42,12 @@ export default async function TcfPage({
   ]);
 
   return (
-    <div className="px-10 py-10 max-w-5xl mx-auto">
+    <>
       <div className="flex items-end gap-3 mb-2">
         <Icon className="h-8 w-8 text-accent mb-0.5" strokeWidth={1.6} />
         <h1 className="font-serif text-4xl font-semibold tracking-tight">TCF Canada</h1>
       </div>
       <p className="text-sm text-muted-foreground mb-6">{meta.title} — par niveau CECR</p>
-
-      {/* Skill toggle */}
-      <div className="inline-flex rounded-lg border border-border/70 bg-surface p-0.5 mb-10">
-        {(["listening", "reading"] as const).map((s) => (
-          <Link
-            key={s}
-            href={`/tcf?skill=${s}`}
-            className={cn(
-              "rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
-              s === skill
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {SKILLS[s].label}
-          </Link>
-        ))}
-      </div>
 
       <h2 className="text-xs uppercase tracking-widest text-subtle-foreground font-medium mb-4">
         {meta.levelVerb} · Choisissez un niveau
@@ -143,6 +124,6 @@ export default async function TcfPage({
           </div>
         </>
       )}
-    </div>
+    </>
   );
 }

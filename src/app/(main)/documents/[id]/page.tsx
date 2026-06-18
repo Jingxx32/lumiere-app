@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getDocument } from "@/lib/actions/documents";
+import { getSavedWordsByDocument } from "@/lib/actions/vocabulary";
 import { ReaderShell } from "./_components/reader-client";
 
 export default async function DocumentReaderPage({
@@ -8,7 +9,10 @@ export default async function DocumentReaderPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const doc = await getDocument(id);
+  const [doc, initialSavedWords] = await Promise.all([
+    getDocument(id),
+    getSavedWordsByDocument(id),
+  ]);
   if (!doc) notFound();
 
   const paragraphs = doc.content
@@ -16,5 +20,5 @@ export default async function DocumentReaderPage({
     .map((p) => p.trim())
     .filter(Boolean);
 
-  return <ReaderShell doc={doc} paragraphs={paragraphs} />;
+  return <ReaderShell doc={doc} paragraphs={paragraphs} initialSavedWords={initialSavedWords} />;
 }

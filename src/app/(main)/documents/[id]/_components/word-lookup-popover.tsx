@@ -15,11 +15,12 @@ type PopoverState =
 
 type Props = {
   articleRef: React.RefObject<HTMLElement | null>;
+  onLookup: (word: string, surface: string, result: LookupResult, sentenceContext: string) => void;
   onSave: (word: string, surface: string) => void;
   savedWords: string[];
 };
 
-export function WordLookupPopover({ articleRef, onSave, savedWords }: Props) {
+export function WordLookupPopover({ articleRef, onLookup, onSave, savedWords }: Props) {
   const [state, setState] = useState<PopoverState>({ phase: "hidden" });
   const [isPending, startTransition] = useTransition();
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -62,6 +63,7 @@ export function WordLookupPopover({ articleRef, onSave, savedWords }: Props) {
           setState((prev) =>
             prev.phase !== "hidden" ? { phase: "ready", word: text, result, x, y } : prev,
           );
+          onLookup(text, text, result, sentenceContext);
         } catch {
           setState({ phase: "hidden" });
         }
@@ -78,7 +80,7 @@ export function WordLookupPopover({ articleRef, onSave, savedWords }: Props) {
       article.removeEventListener("mouseup", handleMouseUp);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [articleRef]);
+  }, [articleRef, onLookup]);
 
   if (state.phase === "hidden") return null;
 

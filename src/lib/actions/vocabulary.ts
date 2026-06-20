@@ -7,6 +7,7 @@ import type { LookupResult } from "@/lib/ai/lookup";
 import { lookupWord } from "@/lib/ai/lookup";
 import { enrichVocab, type FrenchVocabEntry } from "@/lib/ai/enrich";
 import { norm, upsertEntry, upsertAlias, recordOccurrence, resolveLemma } from "@/lib/vocabulary/helpers";
+import type { LookupSource, OccurrenceLink, VocabEntrySummary, VocabEntryDetail } from "@/lib/vocabulary/types";
 
 /** Legacy reading entry point — keeps reader-client compiling until Task 3. */
 export async function upsertVocabularyLookup(
@@ -33,35 +34,7 @@ export async function upsertVocabularyLookup(
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
 
-export type LookupSource =
-  | { type: "reading"; documentId: string }
-  | { type: "tcf"; tcfQuestionId: string };
-
-export type OccurrenceLink = {
-  sourceType: "reading" | "tcf";
-  documentId: string | null;
-  tcfQuestionId: string | null;
-  surface: string;
-  sentenceContext: string | null;
-};
-
-export type VocabEntrySummary = {
-  lemma: string;
-  surface: string;
-  pos: string | null;
-  cefrLevel: string | null;
-  translation: string | null;
-  saved: boolean;
-  enriched: boolean;
-};
-
-export type VocabEntryDetail = VocabEntrySummary & {
-  inContext: string | null;
-  examples: string[];
-  conjugation: string | null;
-  richEntry: FrenchVocabEntry | null;
-  occurrences: OccurrenceLink[];
-};
+export type { LookupSource, OccurrenceLink, VocabEntrySummary, VocabEntryDetail } from "@/lib/vocabulary/types";
 
 /* ------------------------------------------------------------------ */
 /*  Cache-first lookup                                                  */

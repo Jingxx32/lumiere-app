@@ -54,7 +54,7 @@ export function VocabBrowser({
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState<string | null>(null);
   const [posFilter, setPosFilter] = useState<string | null>(null);
-  const [savedOnly, setSavedOnly] = useState(false);
+  const [savedOnly, setSavedOnly] = useState(true);
 
   // Detail panel
   const [selectedLemma, setSelectedLemma] = useState<string | null>(null);

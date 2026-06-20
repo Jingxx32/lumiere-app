@@ -1,4 +1,4 @@
-import { pgEnum, pgTable, text, integer, timestamp, jsonb, boolean, uuid, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgEnum, pgTable, text, integer, timestamp, jsonb, boolean, uuid, uniqueIndex, unique } from "drizzle-orm/pg-core";
 
 /* ------------------------------------------------------------------ */
 /*  Enums                                                               */
@@ -168,9 +168,9 @@ export type MicroDrill = typeof microDrills.$inferSelect;
 
 export const vocabularyLookups = pgTable("vocabulary_lookups", {
   id: text("id").primaryKey(),
-  /** NFC-normalised lowercase — global dedupe key */
-  word: text("word").notNull().unique(),
-  /** Original casing as selected by the user */
+  /** NFC-lowercased dictionary lemma — global dedupe key */
+  lemma: text("lemma").notNull().unique(),
+  /** First-seen surface form (original casing) */
   surface: text("surface").notNull(),
   pos: text("pos"),
   translation: text("translation"),
@@ -180,15 +180,53 @@ export const vocabularyLookups = pgTable("vocabulary_lookups", {
   examples: jsonb("examples"),
   conjugation: text("conjugation"),
   sentenceContext: text("sentence_context"),
-  documentId: text("document_id").references(() => documents.id, { onDelete: "set null" }),
-  sessionId: text("session_id").references(() => readingSessions.id, { onDelete: "set null" }),
+  /** Full FrenchVocabEntry per verb_schema_spec.md — null until enriched */
+  richEntry: jsonb("rich_entry"),
+  enrichedAt: timestamp("enriched_at"),
   lookedUpAt: timestamp("looked_up_at").notNull().defaultNow(),
-  /** null = looked up only; non-null = explicitly saved by the user */
+  /** null = looked up only; non-null = explicitly saved */
   savedAt: timestamp("saved_at"),
   reviewCount: integer("review_count").notNull().default(0),
 });
 
 export type VocabularyLookup = typeof vocabularyLookups.$inferSelect;
+
+export const vocabSourceEnum = pgEnum("vocab_source", ["reading", "tcf"]);
+
+export const vocabularyAliases = pgTable("vocabulary_aliases", {
+  /** NFC + lowercase surface form, e.g. "fait" */
+  surface: text("surface").primaryKey(),
+  lemma: text("lemma")
+    .notNull()
+    .references(() => vocabularyLookups.lemma, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const vocabularyOccurrences = pgTable(
+  "vocabulary_occurrences",
+  {
+    id: text("id").primaryKey(),
+    lemma: text("lemma")
+      .notNull()
+      .references(() => vocabularyLookups.lemma, { onDelete: "cascade" }),
+    sourceType: vocabSourceEnum("source_type").notNull(),
+    documentId: text("document_id").references(() => documents.id, { onDelete: "set null" }),
+    tcfQuestionId: uuid("tcf_question_id").references(() => tcfQuestions.id, { onDelete: "cascade" }),
+    surface: text("surface").notNull(),
+    sentenceContext: text("sentence_context"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // nullsNotDistinct: the always-null source column would otherwise make every row unique
+    // and break dedupe (spec §3.3). unique().on() supports nullsNotDistinct; uniqueIndex does not.
+    unique("vocab_occ_unique_idx")
+      .on(t.lemma, t.sourceType, t.documentId, t.tcfQuestionId)
+      .nullsNotDistinct(),
+  ],
+);
+
+export type VocabularyOccurrence = typeof vocabularyOccurrences.$inferSelect;
+
 
 /* ------------------------------------------------------------------ */
 /*  Quiz engine — shared substrate for TCF / dictation / conjugation   */

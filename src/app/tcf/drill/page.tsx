@@ -17,13 +17,14 @@ const VALID_LEVELS: TcfLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2"];
 export default async function TcfDrillPage({
   searchParams,
 }: {
-  searchParams: Promise<{ skill?: string; level?: string }>;
+  searchParams: Promise<{ skill?: string; level?: string; q?: string }>;
 }) {
-  const { skill: skillParam, level: levelParam } = await searchParams;
+  const { skill: skillParam, level: levelParam, q } = await searchParams;
   const skill = (skillParam === "reading" ? "reading" : "listening") as "listening" | "reading";
   const level = (VALID_LEVELS.includes(levelParam as TcfLevel) ? levelParam : "A2") as TcfLevel;
 
   const questions = await getTcfDrillQuestions(skill, level);
+  const initialIndex = q ? Math.max(0, questions.findIndex((x) => x.id === q)) : 0;
   const title = skill === "reading" ? "Compréhension écrite" : "Compréhension orale";
 
   return (
@@ -55,7 +56,7 @@ export default async function TcfDrillPage({
           </p>
         </div>
       ) : (
-        <DrillRunner questions={questions} />
+        <DrillRunner questions={questions} initialIndex={initialIndex} />
       )}
     </div>
   );

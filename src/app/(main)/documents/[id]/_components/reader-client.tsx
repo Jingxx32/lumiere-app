@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
@@ -9,15 +9,13 @@ import {
   updateReadingProgress,
   updateSessionDuration,
 } from "@/lib/actions/reading";
-import { upsertVocabularyLookup, saveVocabularyWord } from "@/lib/actions/vocabulary";
 import { generateWritingTask } from "@/lib/actions/tasks";
-import type { LookupResult } from "@/lib/ai/lookup";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { CEFR_CHIP_CLASSES, type CefrLevel } from "@/lib/cefr";
 import { cn } from "@/lib/utils";
 import type { Document } from "@/lib/db/schema";
-import { WordLookupPopover } from "./word-lookup-popover";
+import { WordLookupPopover } from "@/components/word-lookup-popover";
 import { SessionSidebar } from "./session-sidebar";
 
 type Props = {
@@ -80,20 +78,6 @@ export function ReaderShell({ doc, paragraphs, initialSavedWords }: Props) {
     paras.forEach((p) => observer.observe(p));
     return () => observer.disconnect();
   }, [doc.id]);
-
-  const handleLookupWord = useCallback(
-    async (word: string, surface: string, result: LookupResult, sentenceContext: string) => {
-      if (!sessionIdRef.current) return;
-      await upsertVocabularyLookup(word, surface, result, doc.id, sessionIdRef.current, sentenceContext);
-    },
-    [doc.id],
-  );
-
-  async function handleSaveWord(word: string, _surface: string) {
-    const lower = word.toLowerCase();
-    setSavedWords((prev) => (prev.includes(lower) ? prev : [...prev, lower]));
-    await saveVocabularyWord(lower);
-  }
 
   async function handleGenerateTask(vocabWords: string[] = []) {
     setIsGenerating(true);
@@ -166,10 +150,10 @@ export function ReaderShell({ doc, paragraphs, initialSavedWords }: Props) {
 
       {/* Word lookup popover — absolute within the grid */}
       <WordLookupPopover
-        articleRef={articleRef}
-        onLookup={handleLookupWord}
-        onSave={handleSaveWord}
-        savedWords={savedWords}
+        containerRef={articleRef}
+        source={{ type: "reading", documentId: doc.id }}
+        savedLemmas={savedWords}
+        onSaved={(lemma) => setSavedWords((prev) => (prev.includes(lemma) ? prev : [...prev, lemma]))}
       />
 
       {/* This Session sidebar */}

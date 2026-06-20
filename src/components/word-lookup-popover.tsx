@@ -1,91 +1,83 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { BookmarkPlus, ExternalLink, X } from "lucide-react";
-import { lookupWord, type LookupResult } from "@/lib/ai/lookup";
+import { useCallback, useRef, useState, useTransition } from "react";
+import { BookmarkPlus, ExternalLink, RefreshCw, X } from "lucide-react";
+import {
+  resolveLookup,
+  reexplainInContext,
+  saveVocabularyWord,
+} from "@/lib/actions/vocabulary";
+import type { LookupSource } from "@/lib/vocabulary/types";
+import type { LookupResult } from "@/lib/ai/lookup";
+import { useTextSelection } from "@/hooks/use-text-selection";
 import { Chip } from "@/components/ui/chip";
 import { Button } from "@/components/ui/button";
 import { CEFR_CHIP_CLASSES, type CefrLevel } from "@/lib/cefr";
 import { cn } from "@/lib/utils";
 
-type PopoverState =
+type State =
   | { phase: "hidden" }
   | { phase: "loading"; word: string; x: number; y: number }
-  | { phase: "ready"; word: string; result: LookupResult; x: number; y: number };
+  | {
+      phase: "ready";
+      lemma: string;
+      word: string;
+      result: LookupResult;
+      x: number;
+      y: number;
+      sentence: string;
+    };
 
-type Props = {
-  articleRef: React.RefObject<HTMLElement | null>;
-  onLookup: (word: string, surface: string, result: LookupResult, sentenceContext: string) => void;
-  onSave: (word: string, surface: string) => void;
-  savedWords: string[];
-};
-
-export function WordLookupPopover({ articleRef, onLookup, onSave, savedWords }: Props) {
-  const [state, setState] = useState<PopoverState>({ phase: "hidden" });
-  const [isPending, startTransition] = useTransition();
+export function WordLookupPopover({
+  containerRef,
+  source,
+  savedLemmas,
+  onSaved,
+}: {
+  containerRef: React.RefObject<HTMLElement | null>;
+  source: LookupSource;
+  savedLemmas: string[];
+  onSaved: (lemma: string) => void;
+}) {
+  const [state, setState] = useState<State>({ phase: "hidden" });
+  const [, startTransition] = useTransition();
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const article = articleRef.current;
-    if (!article) return;
-
-    function handleMouseUp(e: MouseEvent) {
-      // Ignore clicks inside the popover itself
-      if (popoverRef.current?.contains(e.target as Node)) return;
-
-      const selection = window.getSelection();
-      const rawText = selection?.toString().trim();
-      if (!rawText || rawText.length < 2 || rawText.length > 80) {
-        setState({ phase: "hidden" });
-        return;
-      }
-      const text = rawText.normalize("NFC");
-
-      // Get context sentence by finding surrounding text
-      const range = selection!.getRangeAt(0);
-      const container = range.startContainer;
-      const paragraph = (container.nodeType === Node.TEXT_NODE
-        ? container.parentElement
-        : (container as Element)
-      )?.closest("p");
-      const sentenceContext = (paragraph?.textContent ?? text).normalize("NFC");
-
-      // Position below the selection
-      const rect = range.getBoundingClientRect();
-      const x = Math.min(rect.left + rect.width / 2, window.innerWidth - 320);
-      const y = rect.bottom + window.scrollY + 8;
-
-      setState({ phase: "loading", word: text, x, y });
-
+  const onSelect = useCallback(
+    (sel: { text: string; sentenceContext: string; rect: DOMRect } | null) => {
+      if (!sel) return setState({ phase: "hidden" });
+      const x = Math.min(sel.rect.left + sel.rect.width / 2, window.innerWidth - 320);
+      const y = sel.rect.bottom + window.scrollY + 8;
+      setState({ phase: "loading", word: sel.text, x, y });
       startTransition(async () => {
         try {
-          const result = await lookupWord(text, sentenceContext);
-          setState((prev) =>
-            prev.phase !== "hidden" ? { phase: "ready", word: text, result, x, y } : prev,
+          const { lemma, result } = await resolveLookup(sel.text, sel.sentenceContext, source);
+          setState((p) =>
+            p.phase === "hidden"
+              ? p
+              : {
+                  phase: "ready",
+                  lemma,
+                  word: sel.text,
+                  result,
+                  x,
+                  y,
+                  sentence: sel.sentenceContext,
+                },
           );
-          onLookup(text, text, result, sentenceContext);
         } catch {
           setState({ phase: "hidden" });
         }
       });
-    }
+    },
+    [source],
+  );
 
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setState({ phase: "hidden" });
-    }
-
-    article.addEventListener("mouseup", handleMouseUp);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      article.removeEventListener("mouseup", handleMouseUp);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [articleRef, onLookup]);
+  useTextSelection(containerRef, onSelect, popoverRef);
 
   if (state.phase === "hidden") return null;
 
   const { word, x, y } = state;
-  const isSaved = savedWords.includes(word.toLowerCase());
 
   return (
     <div
@@ -98,10 +90,12 @@ export function WordLookupPopover({ articleRef, onLookup, onSave, savedWords }: 
         <LoadingSkeleton word={word} onClose={() => setState({ phase: "hidden" })} />
       ) : (
         <LookupCard
+          lemma={state.lemma}
           word={word}
           result={state.result}
-          isSaved={isSaved}
-          onSave={() => onSave(word, word)}
+          sentence={state.sentence}
+          savedLemmas={savedLemmas}
+          onSaved={onSaved}
           onClose={() => setState({ phase: "hidden" })}
         />
       )}
@@ -128,19 +122,45 @@ function LoadingSkeleton({ word, onClose }: { word: string; onClose: () => void 
 }
 
 function LookupCard({
+  lemma,
   word,
   result,
-  isSaved,
-  onSave,
+  sentence,
+  savedLemmas,
+  onSaved,
   onClose,
 }: {
+  lemma: string;
   word: string;
   result: LookupResult;
-  isSaved: boolean;
-  onSave: () => void;
+  sentence: string;
+  savedLemmas: string[];
+  onSaved: (lemma: string) => void;
   onClose: () => void;
 }) {
   const level = result.level as CefrLevel;
+  const isSaved = savedLemmas.includes(lemma);
+  const [inContext, setInContext] = useState(result.in_context);
+  const [isReexplaining, startReexplain] = useTransition();
+  const [isSaving, startSave] = useTransition();
+
+  function handleSave() {
+    startSave(async () => {
+      await saveVocabularyWord(lemma);
+      onSaved(lemma);
+    });
+  }
+
+  function handleReexplain() {
+    startReexplain(async () => {
+      try {
+        const ic = await reexplainInContext(lemma, sentence);
+        setInContext(ic);
+      } catch {
+        // leave existing text on error
+      }
+    });
+  }
 
   return (
     <div className="p-4 space-y-3 text-sm">
@@ -183,7 +203,15 @@ function LookupCard({
 
       {/* In this context */}
       <Section label="In this context">
-        <p className="text-foreground">{result.in_context}</p>
+        <p className="text-foreground">{inContext}</p>
+        <button
+          onClick={handleReexplain}
+          disabled={isReexplaining}
+          className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={cn("h-3 w-3", isReexplaining && "animate-spin")} />
+          Re-explain in this sentence
+        </button>
       </Section>
 
       <Divider />
@@ -207,8 +235,8 @@ function LookupCard({
           size="sm"
           variant={isSaved ? "soft" : "outline"}
           className="flex-1"
-          onClick={onSave}
-          disabled={isSaved}
+          onClick={handleSave}
+          disabled={isSaved || isSaving}
         >
           <BookmarkPlus className="h-3.5 w-3.5" />
           {isSaved ? "Saved" : "+ Save to vocabulary"}

@@ -11,6 +11,7 @@ import {
   Settings,
   Sparkles,
   Headphones,
+  BookMarked,
   type LucideIcon,
 } from "lucide-react";
 
@@ -29,6 +30,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Library",
     icon: BookOpen,
     matcher: (p) => p === "/" || p.startsWith("/library") || p.startsWith("/documents"),
+  },
+  {
+    href: "/vocabulary",
+    label: "Vocabulary",
+    icon: BookMarked,
+    matcher: (p) => p.startsWith("/vocabulary"),
   },
   {
     href: "/practice",

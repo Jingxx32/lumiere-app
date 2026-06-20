@@ -1,0 +1,92 @@
+/**
+ * Shared vocabulary helpers — used by server actions and server-side utilities.
+ * NOT a "use server" file: these are plain server-side functions, not Next.js Server Actions.
+ */
+
+import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { vocabularyLookups, vocabularyAliases, vocabularyOccurrences } from "@/lib/db/schema";
+import type { LookupResult } from "@/lib/ai/lookup";
+
+export const norm = (s: string) => s.toLowerCase().normalize("NFC").trim();
+
+/** Upsert the lemma entry (never overwrites richEntry/savedAt/enrichedAt). */
+export async function upsertEntry(lemma: string, surface: string, result: LookupResult) {
+  await db
+    .insert(vocabularyLookups)
+    .values({
+      id: randomUUID(),
+      lemma,
+      surface,
+      pos: result.pos,
+      translation: result.translation,
+      cefrLevel: result.level,
+      inContext: result.in_context,
+      examples: result.examples,
+      conjugation: result.conjugation ?? null,
+      sentenceContext: "",
+      lookedUpAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: vocabularyLookups.lemma,
+      // Flat fields are refreshed on each lookup so the card always shows the most recent AI gloss.
+      // richEntry, savedAt, and enrichedAt are intentionally excluded — they survive re-lookups.
+      set: {
+        pos: result.pos,
+        translation: result.translation,
+        cefrLevel: result.level,
+        inContext: result.in_context,
+        examples: result.examples,
+        conjugation: result.conjugation ?? null,
+        lookedUpAt: new Date(),
+      },
+    });
+}
+
+export async function upsertAlias(surface: string, lemma: string) {
+  await db
+    .insert(vocabularyAliases)
+    .values({ surface, lemma, createdAt: new Date() })
+    .onConflictDoNothing();
+}
+
+export async function recordOccurrence(opts: {
+  lemma: string;
+  surface: string;
+  sentenceContext: string;
+  sourceType: "reading" | "tcf";
+  documentId?: string | null;
+  tcfQuestionId?: string | null;
+}) {
+  await db
+    .insert(vocabularyOccurrences)
+    .values({
+      id: randomUUID(),
+      lemma: opts.lemma,
+      surface: opts.surface,
+      sentenceContext: opts.sentenceContext,
+      sourceType: opts.sourceType,
+      documentId: opts.documentId ?? null,
+      tcfQuestionId: opts.tcfQuestionId ?? null,
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing();
+}
+
+/** Resolve a surface (or lemma) to its lemma via the alias table. */
+export async function resolveLemma(surface: string): Promise<string | null> {
+  const s = norm(surface);
+  const direct = await db
+    .select({ lemma: vocabularyLookups.lemma })
+    .from(vocabularyLookups)
+    .where(eq(vocabularyLookups.lemma, s))
+    .limit(1);
+  if (direct[0]) return direct[0].lemma;
+  const alias = await db
+    .select({ lemma: vocabularyAliases.lemma })
+    .from(vocabularyAliases)
+    .where(eq(vocabularyAliases.surface, s))
+    .limit(1);
+  return alias[0]?.lemma ?? null;
+}

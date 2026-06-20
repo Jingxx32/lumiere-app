@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, Eye, EyeOff, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { LevelNav } from "./level-nav";
+import { WordLookupPopover } from "@/components/word-lookup-popover";
 import type { TcfQuestionForDrill, TcfLevel } from "@/lib/actions/tcf";
 
 const LEVEL_COLORS: Record<TcfLevel, { bg: string; text: string }> = {
@@ -32,6 +33,7 @@ interface DrillRunnerProps {
 export function DrillRunner({ questions, initialIndex = 0 }: DrillRunnerProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [showAnswer, setShowAnswer] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   if (questions.length === 0) {
     return (
@@ -92,9 +94,9 @@ export function DrillRunner({ questions, initialIndex = 0 }: DrillRunnerProps) {
         </div>
 
         {/* Question card */}
-        <div className="rounded-xl border border-border/70 bg-surface px-6 py-5 space-y-4">
+        <div ref={contentRef} className="rounded-xl border border-border/70 bg-surface px-6 py-5 space-y-4">
           {/* Instruction */}
-          <p className="text-sm text-muted-foreground italic">{q.questionText}</p>
+          <p data-selectable className="text-sm text-muted-foreground italic">{q.questionText}</p>
 
           {/* Image (image type) */}
           {q.type === "image" && (
@@ -179,7 +181,7 @@ export function DrillRunner({ questions, initialIndex = 0 }: DrillRunnerProps) {
                     {showAnswer && isCorrect ? <Check className="h-3 w-3" /> : letter}
                   </span>
                   {showText ? (
-                    <span>{option}</span>
+                    <span data-selectable>{option}</span>
                   ) : (
                     <span className="text-muted-foreground">
                       {q.type === "spoken_options" ? "Réponse" : "Proposition"} {letter}
@@ -202,6 +204,13 @@ export function DrillRunner({ questions, initialIndex = 0 }: DrillRunnerProps) {
             </div>
           )}
         </div>
+
+        <WordLookupPopover
+          containerRef={contentRef}
+          source={{ type: "tcf", tcfQuestionId: q.id }}
+          savedLemmas={[]}
+          onSaved={() => {}}
+        />
 
         {/* Prev / Next */}
         <div className="flex items-center justify-between mt-4">

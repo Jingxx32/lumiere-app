@@ -32,3 +32,7 @@ data/
 # build output
 next-env.d.ts
 .tsbuildinfo
+
+# TCF copyrighted exam content — kept local only
+public/media/
+scripts/

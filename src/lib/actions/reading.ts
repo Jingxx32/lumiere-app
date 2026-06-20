@@ -5,13 +5,6 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { readingSessions, documents } from "@/lib/db/schema";
 
-export type VocabEntry = {
-  word: string;
-  surface: string;
-  lookedUpAt: string;
-  position: number;
-};
-
 export async function createReadingSession(documentId: string): Promise<string> {
   const doc = await db
     .select({ title: documents.title })
@@ -28,31 +21,6 @@ export async function createReadingSession(documentId: string): Promise<string> 
     vocabularyLookedUp: [],
   });
   return id;
-}
-
-export async function addVocabularyWord(
-  sessionId: string,
-  entry: Omit<VocabEntry, "lookedUpAt">,
-): Promise<void> {
-  const session = await db
-    .select()
-    .from(readingSessions)
-    .where(eq(readingSessions.id, sessionId))
-    .limit(1)
-    .then((r) => r[0]);
-  if (!session) return;
-
-  const existing = (session.vocabularyLookedUp as VocabEntry[]) ?? [];
-  if (existing.some((e) => e.word.toLowerCase() === entry.word.toLowerCase())) return;
-
-  const updated: VocabEntry[] = [
-    ...existing,
-    { ...entry, lookedUpAt: new Date().toISOString() },
-  ];
-  await db
-    .update(readingSessions)
-    .set({ vocabularyLookedUp: updated })
-    .where(eq(readingSessions.id, sessionId));
 }
 
 export async function updateSessionDuration(

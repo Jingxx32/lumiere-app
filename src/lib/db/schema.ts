@@ -1,4 +1,4 @@
-import { pgEnum, pgTable, text, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgEnum, pgTable, text, integer, timestamp, jsonb, boolean, uuid, uniqueIndex } from "drizzle-orm/pg-core";
 
 /* ------------------------------------------------------------------ */
 /*  Enums                                                               */
@@ -163,6 +163,169 @@ export const microDrills = pgTable("micro_drills", {
 export type MicroDrill = typeof microDrills.$inferSelect;
 
 /* ------------------------------------------------------------------ */
+/*  vocabulary_lookups — every word the user investigates              */
+/* ------------------------------------------------------------------ */
+
+export const vocabularyLookups = pgTable("vocabulary_lookups", {
+  id: text("id").primaryKey(),
+  /** NFC-normalised lowercase — global dedupe key */
+  word: text("word").notNull().unique(),
+  /** Original casing as selected by the user */
+  surface: text("surface").notNull(),
+  pos: text("pos"),
+  translation: text("translation"),
+  cefrLevel: text("cefr_level"),
+  inContext: text("in_context"),
+  /** JSON string[] of example sentences */
+  examples: jsonb("examples"),
+  conjugation: text("conjugation"),
+  sentenceContext: text("sentence_context"),
+  documentId: text("document_id").references(() => documents.id, { onDelete: "set null" }),
+  sessionId: text("session_id").references(() => readingSessions.id, { onDelete: "set null" }),
+  lookedUpAt: timestamp("looked_up_at").notNull().defaultNow(),
+  /** null = looked up only; non-null = explicitly saved by the user */
+  savedAt: timestamp("saved_at"),
+  reviewCount: integer("review_count").notNull().default(0),
+});
+
+export type VocabularyLookup = typeof vocabularyLookups.$inferSelect;
+
+/* ------------------------------------------------------------------ */
+/*  Quiz engine — shared substrate for TCF / dictation / conjugation   */
+/*  (PRD v0.2 §5 — strong decision D-0: one set of tables, no forks)   */
+/* ------------------------------------------------------------------ */
+
+export const quizSectionEnum = pgEnum("quiz_section", [
+  "reading",
+  "listening",
+  "grammar",
+  "vocabulary",
+  "dictation",
+  "conjugation",
+]);
+
+export const quizTypeEnum = pgEnum("quiz_type", [
+  "single",
+  "multi",
+  "true_false",
+  "fill_blank",
+]);
+
+/* ------------------------------------------------------------------ */
+/*  quiz_sets — one exam paper / podcast episode / drill batch         */
+/* ------------------------------------------------------------------ */
+
+export const quizSets = pgTable("quiz_sets", {
+  id: text("id").primaryKey(),
+  /** Exam system identifier: 'TCF' | 'TEF' | 'DELF_B1' | 'podcast' | 'conjugation' … */
+  exam: text("exam").notNull(),
+  /** Paper number within the exam series, e.g. TCF blanc nº 3 */
+  number: integer("number"),
+  section: quizSectionEnum("section").notNull(),
+  title: text("title").notNull(),
+  /** Source material / podcast name */
+  source: text("source"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type QuizSet = typeof quizSets.$inferSelect;
+
+/* ------------------------------------------------------------------ */
+/*  quiz_passages — shared stimulus a group of questions hangs off     */
+/* ------------------------------------------------------------------ */
+
+export const quizPassages = pgTable("quiz_passages", {
+  id: text("id").primaryKey(),
+  setId: text("set_id")
+    .notNull()
+    .references(() => quizSets.id, { onDelete: "cascade" }),
+  orderIndex: integer("order_index").notNull().default(0),
+  /** Reading passage / listening script / podcast transcript */
+  text: text("text").notNull(),
+  /** TCF listening = local mp3 path; podcast = original remote URL */
+  audioUrl: text("audio_url"),
+  /** How the audio came to be: 'tts' | 'asr' */
+  sourceType: text("source_type"),
+  /** Podcast / source-material URL */
+  sourceUrl: text("source_url"),
+  /** Audio duration in seconds */
+  mediaDuration: integer("media_duration"),
+  /** Segment carved from the original audio — start (seconds) */
+  segmentStart: integer("segment_start"),
+  /** Segment end (seconds) */
+  segmentEnd: integer("segment_end"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type QuizPassage = typeof quizPassages.$inferSelect;
+
+/* ------------------------------------------------------------------ */
+/*  quiz_questions — typed questions; answer shape varies by type      */
+/* ------------------------------------------------------------------ */
+
+export const quizQuestions = pgTable("quiz_questions", {
+  id: text("id").primaryKey(),
+  passageId: text("passage_id")
+    .notNull()
+    .references(() => quizPassages.id, { onDelete: "cascade" }),
+  orderIndex: integer("order_index").notNull().default(0),
+  type: quizTypeEnum("type").notNull(),
+  questionText: text("question_text").notNull(),
+  /** JSON string[] for choice questions; null for fill_blank/true_false */
+  options: jsonb("options"),
+  /** Flexible answer (D-9): single=index, multi=index[], true_false=bool, fill_blank=string|string[] */
+  answer: jsonb("answer").notNull(),
+  explanation: text("explanation"),
+  /** fill_blank: start of the blanked word in the audio (seconds) */
+  audioStart: integer("audio_start"),
+  /** fill_blank: end of the blanked word in the audio (seconds) */
+  audioEnd: integer("audio_end"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type QuizQuestion = typeof quizQuestions.$inferSelect;
+
+/* ------------------------------------------------------------------ */
+/*  quiz_attempts — one row per completed run of a set (W-5)           */
+/* ------------------------------------------------------------------ */
+
+export const quizAttempts = pgTable("quiz_attempts", {
+  id: text("id").primaryKey(),
+  setId: text("set_id")
+    .notNull()
+    .references(() => quizSets.id, { onDelete: "cascade" }),
+  score: integer("score").notNull(),
+  total: integer("total").notNull(),
+  answeredAt: timestamp("answered_at").notNull().defaultNow(),
+});
+
+export type QuizAttempt = typeof quizAttempts.$inferSelect;
+
+/* ------------------------------------------------------------------ */
+/*  conjugation_attempts — drill history; the answer key itself is     */
+/*  computed at runtime from the french-verbs library (D-7), never     */
+/*  stored as a data table                                             */
+/* ------------------------------------------------------------------ */
+
+export const conjugationAttempts = pgTable("conjugation_attempts", {
+  id: text("id").primaryKey(),
+  /** Display infinitive, e.g. "se lever" */
+  verb: text("verb").notNull(),
+  /** One of the 6 drill tenses, e.g. "passé composé" */
+  tense: text("tense").notNull(),
+  /** 0–5 = je, tu, il/elle, nous, vous, ils/elles */
+  person: integer("person").notNull(),
+  /** What the learner typed (NFC-normalised) */
+  userInput: text("user_input").notNull(),
+  /** Canonical correct form snapshotted at answer time */
+  expected: text("expected").notNull(),
+  correct: boolean("correct").notNull(),
+  answeredAt: timestamp("answered_at").notNull().defaultNow(),
+});
+
+export type ConjugationAttempt = typeof conjugationAttempts.$inferSelect;
+
+/* ------------------------------------------------------------------ */
 /*  user_settings — key/value store for per-user preferences           */
 /* ------------------------------------------------------------------ */
 
@@ -174,3 +337,60 @@ export const userSettings = pgTable("user_settings", {
 });
 
 export type UserSetting = typeof userSettings.$inferSelect;
+
+/* ------------------------------------------------------------------ */
+/*  TCF — dedicated tables for Compréhension orale / écrite drills     */
+/* ------------------------------------------------------------------ */
+
+export const tcfSkillEnum = pgEnum("tcf_skill", ["listening", "reading"]);
+export const tcfLevelEnum = pgEnum("tcf_level", ["A1", "A2", "B1", "B2", "C1", "C2"]);
+export const tcfQuestionTypeEnum = pgEnum("tcf_question_type", [
+  "image",
+  "spoken_options",
+  "dialogue",
+  "reading_mcq",
+]);
+
+export const tcfSets = pgTable(
+  "tcf_sets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    testNumber: integer("test_number").notNull(),
+    skill: tcfSkillEnum("skill").notNull(),
+    title: text("title").notNull(),
+    source: text("source"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("tcf_sets_test_skill_idx").on(t.testNumber, t.skill)],
+);
+
+export type TcfSet = typeof tcfSets.$inferSelect;
+
+export const tcfQuestions = pgTable("tcf_questions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  setId: uuid("set_id")
+    .notNull()
+    .references(() => tcfSets.id, { onDelete: "cascade" }),
+  orderIndex: integer("order_index").notNull(),
+  level: tcfLevelEnum("level").notNull(),
+  type: tcfQuestionTypeEnum("type").notNull(),
+  /** Instruction text shown on screen */
+  questionText: text("question_text").notNull(),
+  /** string[4] — French option texts */
+  options: jsonb("options").notNull().$type<string[]>(),
+  /** 0-based index of the correct option */
+  answer: integer("answer").notNull(),
+  /** French transcript / dialogue text — fed to TTS later (listening only) */
+  transcript: text("transcript"),
+  /** Reading passage text — set for text-sourced reading questions (e.g. test 40 PDF); null when the passage is an image */
+  passage: text("passage"),
+  translationEn: text("translation_en"),
+  explanation: text("explanation"),
+  /** Relative path, e.g. /media/tcf/test1/q01.png */
+  imagePath: text("image_path"),
+  /** Relative path, e.g. /media/tcf/test1/q01.mp3 — filled after TTS */
+  audioPath: text("audio_path"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type TcfQuestion = typeof tcfQuestions.$inferSelect;

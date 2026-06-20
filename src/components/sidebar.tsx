@@ -5,9 +5,12 @@ import { usePathname } from "next/navigation";
 import {
   BookOpen,
   PenLine,
+  ListChecks,
+  Repeat,
   BarChart3,
   Settings,
   Sparkles,
+  Headphones,
   type LucideIcon,
 } from "lucide-react";
 
@@ -32,6 +35,24 @@ const NAV_ITEMS: NavItem[] = [
     label: "Practice",
     icon: PenLine,
     matcher: (p) => p.startsWith("/practice"),
+  },
+  {
+    href: "/quiz",
+    label: "Quiz",
+    icon: ListChecks,
+    matcher: (p) => p.startsWith("/quiz"),
+  },
+  {
+    href: "/tcf",
+    label: "TCF",
+    icon: Headphones,
+    matcher: (p) => p.startsWith("/tcf"),
+  },
+  {
+    href: "/conjugation",
+    label: "Conjugation",
+    icon: Repeat,
+    matcher: (p) => p.startsWith("/conjugation"),
   },
   {
     href: "/progress",

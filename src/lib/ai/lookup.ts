@@ -6,6 +6,7 @@ import { CEFR_LEVELS } from "@/lib/cefr";
 import { openai, MODELS } from "./client";
 
 const LookupSchema = z.object({
+  lemma: z.string(),
   pos: z.string(),
   level: z.enum(CEFR_LEVELS),
   translation: z.string(),
@@ -29,6 +30,7 @@ export async function lookupWord(
 Analyse the given French word or phrase as it appears in the provided sentence.
 
 Fields to return:
+- lemma: the dictionary base form — infinitive for verbs, masculine singular for adjectives, singular for nouns; lowercased. For non-inflecting words, the word itself.
 - pos: part of speech with transitivity or gender, e.g. "verb · trans.", "noun · fem.", "adjective", "adverb", "phrase"
 - level: CEFR level of the word (A1–C2)
 - translation: concise English translation for THIS context only — not a dictionary entry

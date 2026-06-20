@@ -30,6 +30,8 @@ export async function upsertEntry(lemma: string, surface: string, result: Lookup
     })
     .onConflictDoUpdate({
       target: vocabularyLookups.lemma,
+      // Flat fields are refreshed on each lookup so the card always shows the most recent AI gloss.
+      // richEntry, savedAt, and enrichedAt are intentionally excluded — they survive re-lookups.
       set: {
         pos: result.pos,
         translation: result.translation,

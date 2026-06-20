@@ -9,27 +9,6 @@ import { enrichVocab, type FrenchVocabEntry } from "@/lib/ai/enrich";
 import { norm, upsertEntry, upsertAlias, recordOccurrence, resolveLemma } from "@/lib/vocabulary/helpers";
 import type { LookupSource, OccurrenceLink, VocabEntrySummary, VocabEntryDetail } from "@/lib/vocabulary/types";
 
-/** Legacy reading entry point — keeps reader-client compiling until Task 3. */
-export async function upsertVocabularyLookup(
-  word: string,
-  surface: string,
-  result: LookupResult,
-  documentId: string,
-  _sessionId: string,
-  sentenceContext: string,
-): Promise<void> {
-  const lemma = norm(result.lemma || word);
-  await upsertEntry(lemma, surface, result);
-  await upsertAlias(norm(surface), lemma);
-  await recordOccurrence({
-    lemma,
-    surface,
-    sentenceContext,
-    sourceType: "reading",
-    documentId,
-  });
-}
-
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */

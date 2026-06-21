@@ -45,7 +45,6 @@ export async function resolveLookup(
         pos: row.pos ?? "",
         level: (row.cefrLevel ?? "A1") as LookupResult["level"],
         translation: row.translation ?? "",
-        conjugation: row.conjugation,
         in_context: row.inContext ?? "",
         examples: (row.examples as string[]) ?? [],
       };

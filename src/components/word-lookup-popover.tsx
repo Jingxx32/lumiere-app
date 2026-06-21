@@ -187,18 +187,6 @@ function LookupCard({
         <p className="text-foreground">{result.translation}</p>
       </Section>
 
-      {/* Conjugation — verbs only */}
-      {result.conjugation && (
-        <>
-          <Divider />
-          <Section label="Conjugation (présent)">
-            <p className="text-foreground font-mono text-xs leading-relaxed">
-              {result.conjugation}
-            </p>
-          </Section>
-        </>
-      )}
-
       <Divider />
 
       {/* In this context */}

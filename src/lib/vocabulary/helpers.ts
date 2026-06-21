@@ -24,7 +24,6 @@ export async function upsertEntry(lemma: string, surface: string, result: Lookup
       cefrLevel: result.level,
       inContext: result.in_context,
       examples: result.examples,
-      conjugation: result.conjugation ?? null,
       sentenceContext: "",
       lookedUpAt: new Date(),
     })
@@ -38,7 +37,6 @@ export async function upsertEntry(lemma: string, surface: string, result: Lookup
         cefrLevel: result.level,
         inContext: result.in_context,
         examples: result.examples,
-        conjugation: result.conjugation ?? null,
         lookedUpAt: new Date(),
       },
     });

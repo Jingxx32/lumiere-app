@@ -2,11 +2,12 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { ChevronLeft, ChevronRight, Eye, EyeOff, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, EyeOff, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { LevelNav } from "./level-nav";
 import { WordLookupPopover } from "@/components/word-lookup-popover";
+import { useDoneQuestions } from "@/hooks/use-done-questions";
 import type { TcfQuestionForDrill, TcfLevel } from "@/lib/actions/tcf";
 
 const LEVEL_COLORS: Record<TcfLevel, { bg: string; text: string }> = {
@@ -33,7 +34,10 @@ interface DrillRunnerProps {
 export function DrillRunner({ questions, initialIndex = 0 }: DrillRunnerProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [showAnswer, setShowAnswer] = useState(false);
+  // Option index the user clicked for the current question (undefined = not chosen yet).
+  const [chosen, setChosen] = useState<number | undefined>(undefined);
   const contentRef = useRef<HTMLDivElement>(null);
+  const { done, markDone, clearAll } = useDoneQuestions();
 
   if (questions.length === 0) {
     return (
@@ -49,12 +53,35 @@ export function DrillRunner({ questions, initialIndex = 0 }: DrillRunnerProps) {
   function goTo(index: number) {
     setCurrentIndex(index);
     setShowAnswer(false);
+    setChosen(undefined);
+  }
+
+  function toggleAnswer() {
+    const next = !showAnswer;
+    setShowAnswer(next);
+    // Hiding the answer also clears the selection so the question is fresh again.
+    if (!next) setChosen(undefined);
+    // Revealing the answer marks the question as done (persisted in localStorage).
+    if (next) markDone(q.id);
+  }
+
+  // Clicking an option records the choice and immediately reveals the correct answer.
+  function choose(optionIndex: number) {
+    setChosen(optionIndex);
+    setShowAnswer(true);
+    markDone(q.id);
   }
 
   return (
     <div className="flex gap-6 min-h-0">
       {/* Left nav */}
-      <LevelNav questions={questions} currentIndex={currentIndex} onSelect={goTo} />
+      <LevelNav
+        questions={questions}
+        currentIndex={currentIndex}
+        onSelect={goTo}
+        doneIds={done}
+        onClear={clearAll}
+      />
 
       {/* Main question area */}
       <div className="flex-1 min-w-0">
@@ -77,7 +104,7 @@ export function DrillRunner({ questions, initialIndex = 0 }: DrillRunnerProps) {
 
           <button
             type="button"
-            onClick={() => setShowAnswer((v) => !v)}
+            onClick={toggleAnswer}
             className={cn(
               "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
               showAnswer
@@ -160,25 +187,41 @@ export function DrillRunner({ questions, initialIndex = 0 }: DrillRunnerProps) {
             {q.options.map((option, i) => {
               const letter = String.fromCharCode(65 + i);
               const isCorrect = i === q.answer;
+              const isChosen = chosen === i;
+              const isWrongChoice = showAnswer && isChosen && !isCorrect;
               const audioOnly = q.type === "image" || q.type === "spoken_options";
               const showText = !audioOnly || showAnswer;
               return (
-                <div
+                <button
                   key={i}
+                  type="button"
+                  onClick={() => choose(i)}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors",
+                    "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-sm text-left transition-colors",
                     showAnswer && isCorrect
                       ? "border-success/40 bg-success-soft text-success"
-                      : "border-border/60 bg-surface text-foreground",
+                      : isWrongChoice
+                        ? "border-danger/40 bg-danger-soft text-danger"
+                        : "border-border/60 bg-surface text-foreground hover:border-accent/30 hover:bg-accent-soft/40 cursor-pointer",
                   )}
                 >
                   <span
                     className={cn(
                       "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-medium",
-                      showAnswer && isCorrect ? "border-success text-success" : "border-border",
+                      showAnswer && isCorrect
+                        ? "border-success text-success"
+                        : isWrongChoice
+                          ? "border-danger text-danger"
+                          : "border-border",
                     )}
                   >
-                    {showAnswer && isCorrect ? <Check className="h-3 w-3" /> : letter}
+                    {showAnswer && isCorrect ? (
+                      <Check className="h-3 w-3" />
+                    ) : isWrongChoice ? (
+                      <X className="h-3 w-3" />
+                    ) : (
+                      letter
+                    )}
                   </span>
                   {showText ? (
                     <span data-selectable>{option}</span>
@@ -187,7 +230,7 @@ export function DrillRunner({ questions, initialIndex = 0 }: DrillRunnerProps) {
                       {q.type === "spoken_options" ? "Réponse" : "Proposition"} {letter}
                     </span>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>

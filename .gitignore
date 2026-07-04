@@ -44,3 +44,6 @@ tcf-test1-q1_*.mp3
 tcf-test1-q1_*.wav
 test1-q1-*.json
 tsconfig.tsbuildinfo
+
+# speaking practice recordings
+public/media/speaking/

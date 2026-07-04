@@ -11,8 +11,7 @@
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
-    "db:seed-rules": "tsx scripts/seed-rules.ts",
-    "import:speaking": "tsx scripts/import-tcf-speaking.ts"
+    "db:seed-rules": "tsx scripts/seed-rules.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.2",
@@ -27,6 +26,7 @@
     "french-verbs": "^5.4.0",
     "french-verbs-lefff": "^3.4.0",
     "lucide-react": "^0.460.0",
+    "microsoft-cognitiveservices-speech-sdk": "^1.50.0",
     "next": "16.2.4",
     "openai": "^6.37.0",
     "pdf-parse": "^2.4.5",

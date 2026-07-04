@@ -1,8 +1,10 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { tcfSets, tcfQuestions, tcfLevelEnum } from "@/lib/db/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { tcfSets, tcfQuestions, tcfAttempts, tcfLevelEnum } from "@/lib/db/schema";
+import type { TcfPerLevel, TcfAttempt } from "@/lib/db/schema";
+import { eq, and, asc, desc } from "drizzle-orm";
 
 export type TcfLevel = (typeof tcfLevelEnum.enumValues)[number];
 
@@ -149,6 +151,39 @@ export async function getTcfQuestionById(
     // Malformed id (not a uuid) → Postgres throws; treat as not found.
     return null;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Exam attempts — the only TCF signal that flows into progress       */
+/* ------------------------------------------------------------------ */
+
+export async function recordTcfExamAttempt(input: {
+  setId: string | null;
+  skill: "listening" | "reading";
+  testNumber: number;
+  score: number;
+  total: number;
+  perLevel: TcfPerLevel;
+}): Promise<void> {
+  const total = Math.max(0, Math.round(input.total));
+  const score = Math.min(total, Math.max(0, Math.round(input.score)));
+  await db.insert(tcfAttempts).values({
+    setId: input.setId,
+    skill: input.skill,
+    testNumber: input.testNumber,
+    score,
+    total,
+    perLevel: input.perLevel,
+  });
+  revalidatePath("/progress");
+}
+
+export async function listRecentTcfAttempts(limit = 10): Promise<TcfAttempt[]> {
+  return db
+    .select()
+    .from(tcfAttempts)
+    .orderBy(desc(tcfAttempts.answeredAt))
+    .limit(limit);
 }
 
 export async function getTcfDrillQuestions(

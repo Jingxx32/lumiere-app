@@ -77,6 +77,12 @@ export async function resolveLookup(
 
 export async function reexplainInContext(lemma: string, sentenceContext: string): Promise<string> {
   const r = await lookupWord(lemma, sentenceContext);
+  // Persist as the entry's latest contextual gloss (that's what `inContext` means),
+  // so re-opening the word doesn't pay for the same AI call again.
+  await db
+    .update(vocabularyLookups)
+    .set({ inContext: r.in_context })
+    .where(eq(vocabularyLookups.lemma, lemma));
   return r.in_context;
 }
 
@@ -191,6 +197,15 @@ export async function getVocabEntryDetail(lemma: string): Promise<VocabEntryDeta
       sentenceContext: o.sentenceContext,
     })),
   };
+}
+
+/** All saved lemmas (global) — used by contexts without a document scope, e.g. TCF drills. */
+export async function getAllSavedLemmas(): Promise<string[]> {
+  const rows = await db
+    .select({ lemma: vocabularyLookups.lemma })
+    .from(vocabularyLookups)
+    .where(isNotNull(vocabularyLookups.savedAt));
+  return rows.map((r) => r.lemma);
 }
 
 export async function getSavedWordsByDocument(documentId: string): Promise<string[]> {

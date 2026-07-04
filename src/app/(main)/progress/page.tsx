@@ -11,7 +11,9 @@ import {
   batchGetRules,
 } from "@/lib/actions/errors";
 import { getDocument } from "@/lib/actions/documents";
+import { listRecentTcfAttempts } from "@/lib/actions/tcf";
 import { ProgressFilters } from "./_components/progress-filters";
+import { TcfAttempts } from "./_components/tcf-attempts";
 import { CategorySection } from "./_components/category-section";
 import { StatCards } from "./_components/stat-cards";
 import { TrendChart } from "./_components/trend-chart";
@@ -43,7 +45,7 @@ export default async function ProgressPage({
     ? (rawWindow as WindowDays)
     : 30;
 
-  const [errorList, errorCounts, dashboardStats, trend, patterns, filterDoc] =
+  const [errorList, errorCounts, dashboardStats, trend, patterns, filterDoc, tcfAttempts] =
     await Promise.all([
       listErrors({ category: activeCategory, subcategory, documentId, limit: 200 }),
       getErrorCounts({ documentId }),
@@ -51,6 +53,7 @@ export default async function ProgressPage({
       getErrorTrend(parsedWindow),
       getTopRecurringPatterns(3),
       documentId ? getDocument(documentId) : Promise.resolve(null),
+      listRecentTcfAttempts(10),
     ]);
 
   const ruleIds = [
@@ -122,6 +125,13 @@ export default async function ProgressPage({
           <EncouragementBanner stats={dashboardStats} />
 
           <hr className="border-border" />
+        </div>
+      )}
+
+      {/* TCF practice history — independent of the writing dashboard gate */}
+      {tcfAttempts.length > 0 && (
+        <div className="mb-10">
+          <TcfAttempts attempts={tcfAttempts} />
         </div>
       )}
 

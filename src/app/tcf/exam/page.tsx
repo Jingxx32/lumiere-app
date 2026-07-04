@@ -40,7 +40,7 @@ export default async function TcfExamPage({
           <p className="mt-2 text-sm text-muted-foreground">Choisissez un autre test depuis la page TCF.</p>
         </div>
       ) : (
-        <ExamRunner questions={questions} />
+        <ExamRunner questions={questions} skill={skill} testNumber={testNumber} />
       )}
     </div>
   );

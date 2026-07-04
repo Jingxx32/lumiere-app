@@ -472,6 +472,28 @@ export const tcfQuestions = pgTable(
 
 export type TcfQuestion = typeof tcfQuestions.$inferSelect;
 
+/* Per-CEFR-level score breakdown for one exam run. */
+export type TcfPerLevel = Record<string, { correct: number; total: number }>;
+
+export const tcfAttempts = pgTable(
+  "tcf_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // set null (not cascade) so attempt history survives a set being re-imported/removed
+    setId: uuid("set_id").references(() => tcfSets.id, { onDelete: "set null" }),
+    // Denormalised for display after a set is gone
+    skill: tcfSkillEnum("skill").notNull(),
+    testNumber: integer("test_number").notNull(),
+    score: integer("score").notNull(),
+    total: integer("total").notNull(),
+    perLevel: jsonb("per_level").$type<TcfPerLevel>(),
+    answeredAt: timestamp("answered_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("tcf_attempts_set_id_idx").on(t.setId)],
+);
+
+export type TcfAttempt = typeof tcfAttempts.$inferSelect;
+
 /* ------------------------------------------------------------------ */
 /*  Speaking — TCF Expression orale practice                           */
 /* ------------------------------------------------------------------ */

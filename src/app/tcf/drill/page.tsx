@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { getTcfDrillQuestions, getTcfQuestionById, type TcfLevel } from "@/lib/actions/tcf";
+import { getAllSavedLemmas } from "@/lib/actions/vocabulary";
 import { DrillRunner } from "../_components/drill-runner";
 
 const LEVEL_LABELS: Record<TcfLevel, string> = {
@@ -33,7 +34,10 @@ export default async function TcfDrillPage({
     }
   }
 
-  const questions = await getTcfDrillQuestions(skill, level);
+  const [questions, savedLemmas] = await Promise.all([
+    getTcfDrillQuestions(skill, level),
+    getAllSavedLemmas(),
+  ]);
   const qIndex = q ? questions.findIndex((x) => x.id === q) : 0;
   const initialIndex = Math.max(0, qIndex);
   const title = skill === "reading" ? "Compréhension écrite" : "Compréhension orale";
@@ -67,7 +71,7 @@ export default async function TcfDrillPage({
           </p>
         </div>
       ) : (
-        <DrillRunner questions={questions} initialIndex={initialIndex} />
+        <DrillRunner questions={questions} initialIndex={initialIndex} savedLemmas={savedLemmas} />
       )}
     </div>
   );

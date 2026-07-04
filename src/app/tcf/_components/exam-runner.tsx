@@ -5,7 +5,9 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight, Check, X, Flag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { recordTcfExamAttempt } from "@/lib/actions/tcf";
 import type { TcfQuestionForDrill, TcfLevel } from "@/lib/actions/tcf";
+import type { TcfPerLevel } from "@/lib/db/schema";
 
 const LEVEL_ORDER: TcfLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2"];
 
@@ -27,9 +29,11 @@ const TYPE_LABELS: Record<TcfQuestionForDrill["type"], string> = {
 
 interface ExamRunnerProps {
   questions: TcfQuestionForDrill[];
+  skill: "listening" | "reading";
+  testNumber: number;
 }
 
-export function ExamRunner({ questions }: ExamRunnerProps) {
+export function ExamRunner({ questions, skill, testNumber }: ExamRunnerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   // answers[i] = chosen option index for questions[i]
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -92,6 +96,26 @@ export function ExamRunner({ questions }: ExamRunnerProps) {
     setFinished(true);
     setConfirmFinish(false);
     setCurrentIndex(0);
+
+    // Persist the run so this signal flows into Progress (fire-and-forget).
+    let correct = 0;
+    const perLevel: TcfPerLevel = {};
+    questions.forEach((qq, idx) => {
+      const entry = (perLevel[qq.level] ??= { correct: 0, total: 0 });
+      entry.total++;
+      if (answers[idx] === qq.answer) {
+        correct++;
+        entry.correct++;
+      }
+    });
+    void recordTcfExamAttempt({
+      setId: questions[0]?.setId ?? null,
+      skill,
+      testNumber,
+      score: correct,
+      total: questions.length,
+      perLevel,
+    }).catch(() => {});
   }
 
   return (

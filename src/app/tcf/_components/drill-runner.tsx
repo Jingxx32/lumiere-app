@@ -29,13 +29,19 @@ const TYPE_LABELS: Record<TcfQuestionForDrill["type"], string> = {
 interface DrillRunnerProps {
   questions: TcfQuestionForDrill[];
   initialIndex?: number;
+  savedLemmas?: string[];
 }
 
-export function DrillRunner({ questions, initialIndex = 0 }: DrillRunnerProps) {
+export function DrillRunner({
+  questions,
+  initialIndex = 0,
+  savedLemmas: initialSavedLemmas = [],
+}: DrillRunnerProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [showAnswer, setShowAnswer] = useState(false);
   // Option index the user clicked for the current question (undefined = not chosen yet).
   const [chosen, setChosen] = useState<number | undefined>(undefined);
+  const [savedLemmas, setSavedLemmas] = useState<string[]>(initialSavedLemmas);
   const contentRef = useRef<HTMLDivElement>(null);
   const { done, markDone, clearAll } = useDoneQuestions();
 
@@ -251,8 +257,10 @@ export function DrillRunner({ questions, initialIndex = 0 }: DrillRunnerProps) {
         <WordLookupPopover
           containerRef={contentRef}
           source={{ type: "tcf", tcfQuestionId: q.id }}
-          savedLemmas={[]}
-          onSaved={() => {}}
+          savedLemmas={savedLemmas}
+          onSaved={(lemma) =>
+            setSavedLemmas((prev) => (prev.includes(lemma) ? prev : [...prev, lemma]))
+          }
         />
 
         {/* Prev / Next */}

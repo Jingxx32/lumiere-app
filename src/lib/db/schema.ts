@@ -432,3 +432,105 @@ export const tcfQuestions = pgTable("tcf_questions", {
 });
 
 export type TcfQuestion = typeof tcfQuestions.$inferSelect;
+
+/* ------------------------------------------------------------------ */
+/*  Speaking — TCF Expression orale practice                           */
+/* ------------------------------------------------------------------ */
+
+export const speakingModeEnum = pgEnum("speaking_mode", ["script_practice", "simulation"]);
+export const speakingSessionStatusEnum = pgEnum("speaking_session_status", [
+  "active",
+  "completed",
+  "abandoned",
+]);
+export const speakingRoleEnum = pgEnum("speaking_role", ["examiner", "user"]);
+
+export const speakingPrompts = pgTable(
+  "speaking_prompts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Tâche number: 1 (entretien dirigé) | 2 (interaction) | 3 (point de vue) */
+    task: integer("task").notNull(),
+    /** Question / scenario card / opinion topic, in French */
+    prompt: text("prompt").notNull(),
+    /** Extra context, e.g. which role the examiner plays (Tâche 2) */
+    context: text("context"),
+    /** Source annotation, e.g. "test 12" */
+    source: text("source"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("speaking_prompts_task_prompt_idx").on(t.task, t.prompt)],
+);
+
+export type SpeakingPrompt = typeof speakingPrompts.$inferSelect;
+
+export const speakingScripts = pgTable("speaking_scripts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  promptId: uuid("prompt_id")
+    .notNull()
+    .references(() => speakingPrompts.id, { onDelete: "cascade" }),
+  /** AI-generated reference script; user-editable */
+  content: text("content").notNull(),
+  /** speaking_profile value used at generation time */
+  profileSnapshot: text("profile_snapshot"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type SpeakingScript = typeof speakingScripts.$inferSelect;
+
+/** Azure word-level detail stored per user turn */
+export type TurnAssessment = {
+  accuracyScore: number;
+  fluencyScore: number;
+  completenessScore: number;
+  pronunciationScore: number;
+  words: {
+    word: string;
+    accuracyScore: number;
+    errorType: string;
+    phonemes: { phoneme: string; accuracyScore: number }[];
+  }[];
+};
+
+/** Aggregated per-session scores (0–100) */
+export type SessionScores = {
+  accuracy: number;
+  fluency: number;
+  completeness: number;
+  overall: number;
+};
+
+export const speakingSessions = pgTable("speaking_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  promptId: uuid("prompt_id")
+    .notNull()
+    .references(() => speakingPrompts.id, { onDelete: "cascade" }),
+  mode: speakingModeEnum("mode").notNull(),
+  status: speakingSessionStatusEnum("status").notNull().default("active"),
+  /** End-of-session report (Phase 2: GPT content feedback) */
+  report: jsonb("report"),
+  scores: jsonb("scores").$type<SessionScores>(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+});
+
+export type SpeakingSession = typeof speakingSessions.$inferSelect;
+
+export const speakingTurns = pgTable("speaking_turns", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: uuid("session_id")
+    .notNull()
+    .references(() => speakingSessions.id, { onDelete: "cascade" }),
+  /** Script practice: sentence index. Simulation: dialogue turn order. */
+  orderIndex: integer("order_index").notNull(),
+  role: speakingRoleEnum("role").notNull(),
+  /** Examiner line, or user speech transcript from Azure */
+  text: text("text").notNull(),
+  /** Relative path, e.g. /media/speaking/<sessionId>/003.wav */
+  audioPath: text("audio_path"),
+  /** Azure word-level assessment — user turns only */
+  assessment: jsonb("assessment").$type<TurnAssessment>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type SpeakingTurn = typeof speakingTurns.$inferSelect;

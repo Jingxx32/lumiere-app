@@ -9,6 +9,7 @@ import { SourceExcerpt } from "./_components/source-excerpt";
 import { SubmissionText } from "./_components/submission-text";
 import { FeedbackPanel } from "./_components/feedback-panel";
 import { FeedbackRetry } from "./_components/feedback-retry";
+import { FeedbackPending } from "./_components/feedback-pending";
 
 export default async function FeedbackPage({
   params,
@@ -54,8 +55,13 @@ export default async function FeedbackPage({
       </div>
 
       {feedback === null ? (
-        /* Generation failed — writing is saved; offer a retry */
-        <FeedbackRetry submissionId={submission.id} />
+        submission.feedbackStatus === "pending" ? (
+          /* Still generating in the background — poll until ready */
+          <FeedbackPending />
+        ) : (
+          /* Generation failed — writing is saved; offer a retry */
+          <FeedbackRetry submissionId={submission.id} />
+        )
       ) : (
         /* Three-column layout: source | submission | feedback */
         <div className="max-w-[1200px] mx-auto grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_360px] gap-5 items-start">

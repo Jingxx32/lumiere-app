@@ -73,5 +73,6 @@ OPENAI_API_KEY        # Required — word lookup, task generation, writing feedb
 OPENAI_MODEL_LOOKUP   # defaults to gpt-4o-mini
 OPENAI_MODEL_TASK     # defaults to gpt-4o
 OPENAI_MODEL_FEEDBACK # defaults to gpt-4o
+OPENAI_MODEL_ENRICH   # vocab enrich; defaults to gpt-4o-mini
 DATABASE_URL          # Required — PostgreSQL connection string (e.g. postgres://user:pass@host/db)
 ```

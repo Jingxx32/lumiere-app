@@ -1,0 +1,1 @@
+ALTER TABLE "submissions" ADD COLUMN "feedback_status" text DEFAULT 'ready' NOT NULL;

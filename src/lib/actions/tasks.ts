@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -157,6 +158,7 @@ async function persistFeedback(
       estimatedLevel: feedback.overall_level_estimate,
       praise: feedback.praise,
       summaryEn: feedback.summary_en,
+      feedbackStatus: "ready",
     })
     .where(eq(submissions.id, submissionId));
 
@@ -189,25 +191,29 @@ export async function createSubmission(taskId: string, contentFr: string): Promi
   const normalised = contentFr.normalize("NFC");
   const id = randomUUID();
 
-  // Phase 1 — persist the submission immediately so the user never loses their writing
+  // Persist immediately with status 'pending' so the user never loses their
+  // writing and the feedback page can show a "generating" state.
   await db.insert(submissions).values({
     id,
     taskId,
     contentFr: normalised,
     wordCount: countWords(normalised),
+    feedbackStatus: "pending",
   });
 
-  // Fetch task context for the feedback prompt
-  const task = await db
-    .select()
-    .from(writingTasks)
-    .where(eq(writingTasks.id, taskId))
-    .limit(1)
-    .then((r) => r[0] ?? null);
-
-  if (task) {
+  // Generate feedback after the response is sent, so submit returns in ~1s
+  // instead of blocking on the 20-40s AI call. The feedback page polls until
+  // status flips to 'ready' (or renders Retry on 'failed').
+  after(async () => {
     try {
-      // Phase 2 — generate structured feedback
+      const task = await db
+        .select()
+        .from(writingTasks)
+        .where(eq(writingTasks.id, taskId))
+        .limit(1)
+        .then((r) => r[0] ?? null);
+      if (!task) throw new Error(`Task ${taskId} not found`);
+
       const feedback = await generateFeedback(
         task.promptEn,
         (task.targetWords as string[]) ?? [],
@@ -215,16 +221,16 @@ export async function createSubmission(taskId: string, contentFr: string): Promi
         task.difficulty ?? "B1",
         normalised,
       );
-
-      // Persist packet + classified errors (with server-side span repair)
       await persistFeedback(id, normalised, feedback);
     } catch (err) {
-      // Submission is already saved; proceed so the user can see their writing.
-      // feedbackJson remains null — the feedback page shows a Retry affordance
-      // wired to regenerateFeedback().
       console.error("Feedback generation failed:", err);
+      await db
+        .update(submissions)
+        .set({ feedbackStatus: "failed" })
+        .where(eq(submissions.id, id));
     }
-  }
+    revalidatePath(`/practice/${id}/feedback`);
+  });
 
   redirect(`/practice/${id}/feedback`);
 }
@@ -267,6 +273,10 @@ export async function regenerateFeedback(
     return { ok: true };
   } catch (err) {
     console.error("Feedback regeneration failed:", err);
+    await db
+      .update(submissions)
+      .set({ feedbackStatus: "failed" })
+      .where(eq(submissions.id, submissionId));
     return { ok: false };
   }
 }

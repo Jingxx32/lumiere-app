@@ -100,6 +100,9 @@ export const submissions = pgTable(
     /** JSON string[] of praise sentences shown in the Praise card */
     praise: jsonb("praise").$type<string[]>(),
     summaryEn: text("summary_en"),
+    /** Feedback lifecycle: 'pending' (generating in after()), 'ready', 'failed'.
+     *  Default 'ready' so pre-existing rows render normally. */
+    feedbackStatus: text("feedback_status").notNull().default("ready"),
   },
   (t) => [index("submissions_task_id_idx").on(t.taskId)],
 );

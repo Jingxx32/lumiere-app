@@ -12,6 +12,7 @@ import {
   Sparkles,
   Headphones,
   BookMarked,
+  Mic,
   type LucideIcon,
 } from "lucide-react";
 
@@ -54,6 +55,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "TCF",
     icon: Headphones,
     matcher: (p) => p.startsWith("/tcf"),
+  },
+  {
+    href: "/speaking",
+    label: "Speaking",
+    icon: Mic,
+    matcher: (p) => p.startsWith("/speaking"),
   },
   {
     href: "/conjugation",

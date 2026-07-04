@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { after } from "next/server";
 import { eq, desc, ilike, or, and, count, sql, type SQL } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -58,26 +59,32 @@ export async function createDocument(
   }
 
   const id = randomUUID();
-  const wordCount = countWords(parsed.data.content);
+  const content = parsed.data.content;
+  const wordCount = countWords(content);
 
-  // LLM-based estimator; fall back to naive heuristic if OpenAI unavailable
-  let level: string;
-  try {
-    level = await estimateCefrLevel(parsed.data.content);
-  } catch {
-    level = naiveLevelEstimate(parsed.data.content);
-  }
-
+  // Insert immediately with a cheap heuristic level so saving returns in ~ms;
+  // refine with the LLM estimate after the response is sent.
   await db.insert(documents).values({
     id,
     title: parsed.data.title,
     source: parsed.data.source || null,
     sourceUrl: parsed.data.sourceUrl || null,
     type: parsed.data.type,
-    content: parsed.data.content,
+    content,
     wordCount,
-    estimatedLevel: level,
+    estimatedLevel: naiveLevelEstimate(content),
     readingProgress: 0,
+  });
+
+  after(async () => {
+    try {
+      const level = await estimateCefrLevel(content);
+      await db.update(documents).set({ estimatedLevel: level }).where(eq(documents.id, id));
+      revalidatePath("/library");
+      revalidatePath(`/documents/${id}`);
+    } catch (err) {
+      console.error("CEFR estimate failed:", err);
+    }
   });
 
   revalidatePath("/library");

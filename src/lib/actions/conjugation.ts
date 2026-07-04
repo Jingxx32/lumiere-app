@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { desc, inArray, and, eq } from "drizzle-orm";
+import { desc, inArray, and, eq, count, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { errors, conjugationAttempts } from "@/lib/db/schema";
@@ -98,7 +98,7 @@ export async function getDrillQueue(limit = 10): Promise<DrillItem[]> {
 
   // Reverse map: every conjugated form of every common verb → its infinitive,
   // so the verb actually erred on can be recovered from the correction text.
-  const formToVerb = buildFormIndex();
+  const formToVerb = getFormIndex();
 
   const queue: DrillItem[] = [];
   const used = new Set<string>();
@@ -150,6 +150,12 @@ export async function getDrillQueue(limit = 10): Promise<DrillItem[]> {
 
   return queue;
 }
+
+// The form index is derived purely from the static COMMON_VERBS set (~1000+
+// conjugations), so build it once and reuse across requests.
+let formIndexCache: Map<string, string> | null = null;
+const getFormIndex = (): Map<string, string> =>
+  (formIndexCache ??= buildFormIndex());
 
 /** form ("suis allé", "mangeons", …) → infinitive, over the common-verb set. */
 function buildFormIndex(): Map<string, string> {
@@ -279,33 +285,28 @@ export type ConjugationStats = {
 };
 
 export async function getConjugationStats(): Promise<ConjugationStats> {
+  // Aggregate in SQL so this doesn't get slower as attempt history grows.
   const rows = await db
     .select({
       verb: conjugationAttempts.verb,
       tense: conjugationAttempts.tense,
-      correct: conjugationAttempts.correct,
+      attempts: count(),
+      correct: sql<number>`count(*) filter (where ${conjugationAttempts.correct})`,
     })
-    .from(conjugationAttempts);
+    .from(conjugationAttempts)
+    .groupBy(conjugationAttempts.verb, conjugationAttempts.tense);
 
-  const byKey = new Map<
-    string,
-    { verb: string; tense: string; attempts: number; correct: number }
-  >();
+  let totalAttempts = 0;
   let totalCorrect = 0;
-  for (const row of rows) {
-    if (row.correct) totalCorrect += 1;
-    const key = `${row.verb}::${row.tense}`;
-    const entry =
-      byKey.get(key) ??
-      { verb: row.verb, tense: row.tense, attempts: 0, correct: 0 };
-    entry.attempts += 1;
-    if (row.correct) entry.correct += 1;
-    byKey.set(key, entry);
-  }
+  const byTarget = rows.map((row) => {
+    const attempts = Number(row.attempts);
+    const correct = Number(row.correct);
+    totalAttempts += attempts;
+    totalCorrect += correct;
+    return { verb: row.verb, tense: row.tense, attempts, correct };
+  });
 
-  const byTarget = [...byKey.values()].sort(
-    (a, b) => a.correct / a.attempts - b.correct / b.attempts,
-  );
+  byTarget.sort((a, b) => a.correct / a.attempts - b.correct / b.attempts);
 
-  return { totalAttempts: rows.length, totalCorrect, byTarget };
+  return { totalAttempts, totalCorrect, byTarget };
 }

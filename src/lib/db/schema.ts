@@ -1,4 +1,4 @@
-import { pgEnum, pgTable, text, integer, timestamp, jsonb, boolean, uuid, uniqueIndex, unique } from "drizzle-orm/pg-core";
+import { pgEnum, pgTable, text, integer, timestamp, jsonb, boolean, uuid, uniqueIndex, unique, index } from "drizzle-orm/pg-core";
 
 /* ------------------------------------------------------------------ */
 /*  Enums                                                               */
@@ -81,21 +81,25 @@ export type WritingTask = typeof writingTasks.$inferSelect;
 /*  submissions — what the user wrote in response to a task            */
 /* ------------------------------------------------------------------ */
 
-export const submissions = pgTable("submissions", {
-  id: text("id").primaryKey(),
-  taskId: text("task_id")
-    .notNull()
-    .references(() => writingTasks.id, { onDelete: "cascade" }),
-  contentFr: text("content_fr").notNull(),
-  wordCount: integer("word_count").notNull().default(0),
-  submittedAt: timestamp("submitted_at").notNull().defaultNow(),
-  /** Raw AI feedback packet for replay/debug — stored as JSON. */
-  feedbackJson: jsonb("feedback_json"),
-  estimatedLevel: text("estimated_level"),
-  /** JSON string[] of praise sentences shown in the Praise card */
-  praise: jsonb("praise"),
-  summaryEn: text("summary_en"),
-});
+export const submissions = pgTable(
+  "submissions",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => writingTasks.id, { onDelete: "cascade" }),
+    contentFr: text("content_fr").notNull(),
+    wordCount: integer("word_count").notNull().default(0),
+    submittedAt: timestamp("submitted_at").notNull().defaultNow(),
+    /** Raw AI feedback packet for replay/debug — stored as JSON. */
+    feedbackJson: jsonb("feedback_json"),
+    estimatedLevel: text("estimated_level"),
+    /** JSON string[] of praise sentences shown in the Praise card */
+    praise: jsonb("praise"),
+    summaryEn: text("summary_en"),
+  },
+  (t) => [index("submissions_task_id_idx").on(t.taskId)],
+);
 
 export type Submission = typeof submissions.$inferSelect;
 
@@ -103,27 +107,35 @@ export type Submission = typeof submissions.$inferSelect;
 /*  errors — THE SOUL TABLE — every classified error from the AI       */
 /* ------------------------------------------------------------------ */
 
-export const errors = pgTable("errors", {
-  id: text("id").primaryKey(),
-  submissionId: text("submission_id")
-    .notNull()
-    .references(() => submissions.id, { onDelete: "cascade" }),
-  spanStart: integer("span_start").notNull(),
-  spanEnd: integer("span_end").notNull(),
-  original: text("original").notNull(),
-  correction: text("correction").notNull(),
-  /** Top-level taxonomy key, e.g. "Grammar" */
-  category: text("category").notNull(),
-  /** Leaf taxonomy key, e.g. "tense_choice" */
-  subcategory: text("subcategory").notNull(),
-  triggerContext: text("trigger_context"),
-  explanationEn: text("explanation_en").notNull(),
-  /** JSON string[] of 2-3 French example sentences */
-  frExamples: jsonb("fr_examples"),
-  ruleId: text("rule_id"),
-  microDrill: text("micro_drill"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const errors = pgTable(
+  "errors",
+  {
+    id: text("id").primaryKey(),
+    submissionId: text("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "cascade" }),
+    spanStart: integer("span_start").notNull(),
+    spanEnd: integer("span_end").notNull(),
+    original: text("original").notNull(),
+    correction: text("correction").notNull(),
+    /** Top-level taxonomy key, e.g. "Grammar" */
+    category: text("category").notNull(),
+    /** Leaf taxonomy key, e.g. "tense_choice" */
+    subcategory: text("subcategory").notNull(),
+    triggerContext: text("trigger_context"),
+    explanationEn: text("explanation_en").notNull(),
+    /** JSON string[] of 2-3 French example sentences */
+    frExamples: jsonb("fr_examples"),
+    ruleId: text("rule_id"),
+    microDrill: text("micro_drill"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("errors_submission_id_idx").on(t.submissionId),
+    index("errors_category_subcategory_idx").on(t.category, t.subcategory),
+    index("errors_created_at_idx").on(t.createdAt),
+  ],
+);
 
 export type ErrorRecord = typeof errors.$inferSelect;
 
@@ -147,19 +159,23 @@ export type Rule = typeof rules.$inferSelect;
 /*  micro_drills — practice attempts triggered from error cards        */
 /* ------------------------------------------------------------------ */
 
-export const microDrills = pgTable("micro_drills", {
-  id: text("id").primaryKey(),
-  errorId: text("error_id")
-    .notNull()
-    .references(() => errors.id, { onDelete: "cascade" }),
-  /** The drill prompt shown to the user — snapshotted from errors.microDrill at creation time. */
-  promptText: text("prompt_text").notNull(),
-  /** The user's 2-sentence French response. NFC-normalised before insert. */
-  responseFr: text("response_fr").notNull(),
-  /** Light AI feedback packet — see MicroDrillFeedbackSchema. */
-  feedbackJson: jsonb("feedback_json"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const microDrills = pgTable(
+  "micro_drills",
+  {
+    id: text("id").primaryKey(),
+    errorId: text("error_id")
+      .notNull()
+      .references(() => errors.id, { onDelete: "cascade" }),
+    /** The drill prompt shown to the user — snapshotted from errors.microDrill at creation time. */
+    promptText: text("prompt_text").notNull(),
+    /** The user's 2-sentence French response. NFC-normalised before insert. */
+    responseFr: text("response_fr").notNull(),
+    /** Light AI feedback packet — see MicroDrillFeedbackSchema. */
+    feedbackJson: jsonb("feedback_json"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("micro_drills_error_id_idx").on(t.errorId)],
+);
 export type MicroDrill = typeof microDrills.$inferSelect;
 
 /* ------------------------------------------------------------------ */
@@ -222,6 +238,7 @@ export const vocabularyOccurrences = pgTable(
     unique("vocab_occ_unique_idx")
       .on(t.lemma, t.sourceType, t.documentId, t.tcfQuestionId)
       .nullsNotDistinct(),
+    index("vocab_occ_lemma_idx").on(t.lemma),
   ],
 );
 
@@ -272,28 +289,32 @@ export type QuizSet = typeof quizSets.$inferSelect;
 /*  quiz_passages — shared stimulus a group of questions hangs off     */
 /* ------------------------------------------------------------------ */
 
-export const quizPassages = pgTable("quiz_passages", {
-  id: text("id").primaryKey(),
-  setId: text("set_id")
-    .notNull()
-    .references(() => quizSets.id, { onDelete: "cascade" }),
-  orderIndex: integer("order_index").notNull().default(0),
-  /** Reading passage / listening script / podcast transcript */
-  text: text("text").notNull(),
-  /** TCF listening = local mp3 path; podcast = original remote URL */
-  audioUrl: text("audio_url"),
-  /** How the audio came to be: 'tts' | 'asr' */
-  sourceType: text("source_type"),
-  /** Podcast / source-material URL */
-  sourceUrl: text("source_url"),
-  /** Audio duration in seconds */
-  mediaDuration: integer("media_duration"),
-  /** Segment carved from the original audio — start (seconds) */
-  segmentStart: integer("segment_start"),
-  /** Segment end (seconds) */
-  segmentEnd: integer("segment_end"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const quizPassages = pgTable(
+  "quiz_passages",
+  {
+    id: text("id").primaryKey(),
+    setId: text("set_id")
+      .notNull()
+      .references(() => quizSets.id, { onDelete: "cascade" }),
+    orderIndex: integer("order_index").notNull().default(0),
+    /** Reading passage / listening script / podcast transcript */
+    text: text("text").notNull(),
+    /** TCF listening = local mp3 path; podcast = original remote URL */
+    audioUrl: text("audio_url"),
+    /** How the audio came to be: 'tts' | 'asr' */
+    sourceType: text("source_type"),
+    /** Podcast / source-material URL */
+    sourceUrl: text("source_url"),
+    /** Audio duration in seconds */
+    mediaDuration: integer("media_duration"),
+    /** Segment carved from the original audio — start (seconds) */
+    segmentStart: integer("segment_start"),
+    /** Segment end (seconds) */
+    segmentEnd: integer("segment_end"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("quiz_passages_set_id_idx").on(t.setId)],
+);
 
 export type QuizPassage = typeof quizPassages.$inferSelect;
 
@@ -301,25 +322,29 @@ export type QuizPassage = typeof quizPassages.$inferSelect;
 /*  quiz_questions — typed questions; answer shape varies by type      */
 /* ------------------------------------------------------------------ */
 
-export const quizQuestions = pgTable("quiz_questions", {
-  id: text("id").primaryKey(),
-  passageId: text("passage_id")
-    .notNull()
-    .references(() => quizPassages.id, { onDelete: "cascade" }),
-  orderIndex: integer("order_index").notNull().default(0),
-  type: quizTypeEnum("type").notNull(),
-  questionText: text("question_text").notNull(),
-  /** JSON string[] for choice questions; null for fill_blank/true_false */
-  options: jsonb("options"),
-  /** Flexible answer (D-9): single=index, multi=index[], true_false=bool, fill_blank=string|string[] */
-  answer: jsonb("answer").notNull(),
-  explanation: text("explanation"),
-  /** fill_blank: start of the blanked word in the audio (seconds) */
-  audioStart: integer("audio_start"),
-  /** fill_blank: end of the blanked word in the audio (seconds) */
-  audioEnd: integer("audio_end"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const quizQuestions = pgTable(
+  "quiz_questions",
+  {
+    id: text("id").primaryKey(),
+    passageId: text("passage_id")
+      .notNull()
+      .references(() => quizPassages.id, { onDelete: "cascade" }),
+    orderIndex: integer("order_index").notNull().default(0),
+    type: quizTypeEnum("type").notNull(),
+    questionText: text("question_text").notNull(),
+    /** JSON string[] for choice questions; null for fill_blank/true_false */
+    options: jsonb("options"),
+    /** Flexible answer (D-9): single=index, multi=index[], true_false=bool, fill_blank=string|string[] */
+    answer: jsonb("answer").notNull(),
+    explanation: text("explanation"),
+    /** fill_blank: start of the blanked word in the audio (seconds) */
+    audioStart: integer("audio_start"),
+    /** fill_blank: end of the blanked word in the audio (seconds) */
+    audioEnd: integer("audio_end"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("quiz_questions_passage_id_idx").on(t.passageId)],
+);
 
 export type QuizQuestion = typeof quizQuestions.$inferSelect;
 
@@ -327,15 +352,19 @@ export type QuizQuestion = typeof quizQuestions.$inferSelect;
 /*  quiz_attempts — one row per completed run of a set (W-5)           */
 /* ------------------------------------------------------------------ */
 
-export const quizAttempts = pgTable("quiz_attempts", {
-  id: text("id").primaryKey(),
-  setId: text("set_id")
-    .notNull()
-    .references(() => quizSets.id, { onDelete: "cascade" }),
-  score: integer("score").notNull(),
-  total: integer("total").notNull(),
-  answeredAt: timestamp("answered_at").notNull().defaultNow(),
-});
+export const quizAttempts = pgTable(
+  "quiz_attempts",
+  {
+    id: text("id").primaryKey(),
+    setId: text("set_id")
+      .notNull()
+      .references(() => quizSets.id, { onDelete: "cascade" }),
+    score: integer("score").notNull(),
+    total: integer("total").notNull(),
+    answeredAt: timestamp("answered_at").notNull().defaultNow(),
+  },
+  (t) => [index("quiz_attempts_set_id_idx").on(t.setId)],
+);
 
 export type QuizAttempt = typeof quizAttempts.$inferSelect;
 
@@ -345,21 +374,25 @@ export type QuizAttempt = typeof quizAttempts.$inferSelect;
 /*  stored as a data table                                             */
 /* ------------------------------------------------------------------ */
 
-export const conjugationAttempts = pgTable("conjugation_attempts", {
-  id: text("id").primaryKey(),
-  /** Display infinitive, e.g. "se lever" */
-  verb: text("verb").notNull(),
-  /** One of the 6 drill tenses, e.g. "passé composé" */
-  tense: text("tense").notNull(),
-  /** 0–5 = je, tu, il/elle, nous, vous, ils/elles */
-  person: integer("person").notNull(),
-  /** What the learner typed (NFC-normalised) */
-  userInput: text("user_input").notNull(),
-  /** Canonical correct form snapshotted at answer time */
-  expected: text("expected").notNull(),
-  correct: boolean("correct").notNull(),
-  answeredAt: timestamp("answered_at").notNull().defaultNow(),
-});
+export const conjugationAttempts = pgTable(
+  "conjugation_attempts",
+  {
+    id: text("id").primaryKey(),
+    /** Display infinitive, e.g. "se lever" */
+    verb: text("verb").notNull(),
+    /** One of the 6 drill tenses, e.g. "passé composé" */
+    tense: text("tense").notNull(),
+    /** 0–5 = je, tu, il/elle, nous, vous, ils/elles */
+    person: integer("person").notNull(),
+    /** What the learner typed (NFC-normalised) */
+    userInput: text("user_input").notNull(),
+    /** Canonical correct form snapshotted at answer time */
+    expected: text("expected").notNull(),
+    correct: boolean("correct").notNull(),
+    answeredAt: timestamp("answered_at").notNull().defaultNow(),
+  },
+  (t) => [index("conjugation_attempts_verb_tense_idx").on(t.verb, t.tense)],
+);
 
 export type ConjugationAttempt = typeof conjugationAttempts.$inferSelect;
 
@@ -404,7 +437,9 @@ export const tcfSets = pgTable(
 
 export type TcfSet = typeof tcfSets.$inferSelect;
 
-export const tcfQuestions = pgTable("tcf_questions", {
+export const tcfQuestions = pgTable(
+  "tcf_questions",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   setId: uuid("set_id")
     .notNull()
@@ -429,7 +464,9 @@ export const tcfQuestions = pgTable("tcf_questions", {
   /** Relative path, e.g. /media/tcf/test1/q01.mp3 — filled after TTS */
   audioPath: text("audio_path"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (t) => [index("tcf_questions_set_id_idx").on(t.setId)],
+);
 
 export type TcfQuestion = typeof tcfQuestions.$inferSelect;
 

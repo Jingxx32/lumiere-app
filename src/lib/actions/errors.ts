@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { eq, and, desc, count, countDistinct, inArray, gte, asc, type SQL, sql } from "drizzle-orm";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, startOfWeek, addWeeks } from "date-fns";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
@@ -108,15 +108,26 @@ export async function listErrors(opts?: {
       : [];
   const docMap = new Map(docRows.map((d) => [d.id, d.title]));
 
-  // Compute errorIndex: position within submission ordered by spanStart
+  // Compute errorIndex: position within submission ordered by spanStart.
+  // One query for all involved submissions (grouped/numbered in JS) instead of
+  // one query per submission.
+  const allSpanRows = await db
+    .select({ id: errors.id, submissionId: errors.submissionId, spanStart: errors.spanStart })
+    .from(errors)
+    .where(inArray(errors.submissionId, submissionIds))
+    .orderBy(asc(errors.submissionId), asc(errors.spanStart));
+
   const indexMaps = new Map<string, Map<string, number>>();
-  for (const subId of submissionIds) {
-    const allSubErrors = await db
-      .select({ id: errors.id, spanStart: errors.spanStart })
-      .from(errors)
-      .where(eq(errors.submissionId, subId))
-      .orderBy(errors.spanStart);
-    indexMaps.set(subId, new Map(allSubErrors.map((e, i) => [e.id, i])));
+  const counters = new Map<string, number>();
+  for (const row of allSpanRows) {
+    let m = indexMaps.get(row.submissionId);
+    if (!m) {
+      m = new Map();
+      indexMaps.set(row.submissionId, m);
+    }
+    const i = counters.get(row.submissionId) ?? 0;
+    m.set(row.id, i);
+    counters.set(row.submissionId, i + 1);
   }
 
   return errorRows.map((err) => {
@@ -348,16 +359,30 @@ export async function getErrorTrend(windowDays: 30 | 90 | 365): Promise<TrendBuc
     .groupBy(sql`date_trunc('week', ${errors.createdAt})`, errors.category)
     .orderBy(asc(sql`date_trunc('week', ${errors.createdAt})`));
 
-  // Pivot: group by week ISO string
-  const weekMap = new Map<string, TrendBucket>();
+  // Bucket counts by week-start (Postgres date_trunc('week') is Monday-based,
+  // matched here with weekStartsOn: 1).
+  const countsByWeek = new Map<number, Record<string, number>>();
   for (const row of rows) {
-    if (!weekMap.has(row.week)) {
-      weekMap.set(row.week, { weekLabel: format(parseISO(row.week), "MMM d") });
-    }
-    weekMap.get(row.week)![row.category] = Number(row.count);
+    const weekStart = startOfWeek(parseISO(row.week), { weekStartsOn: 1 }).getTime();
+    const bucket = countsByWeek.get(weekStart) ?? {};
+    bucket[row.category] = Number(row.count);
+    countsByWeek.set(weekStart, bucket);
   }
 
-  return Array.from(weekMap.values());
+  // Emit a bucket for every week in the window — including empty ones — so the
+  // line chart advances one step per week instead of "skipping" quiet weeks.
+  const result: TrendBucket[] = [];
+  const end = startOfWeek(new Date(), { weekStartsOn: 1 });
+  let cursor = startOfWeek(startDate, { weekStartsOn: 1 });
+  while (cursor.getTime() <= end.getTime()) {
+    result.push({
+      weekLabel: format(cursor, "MMM d"),
+      ...(countsByWeek.get(cursor.getTime()) ?? {}),
+    });
+    cursor = addWeeks(cursor, 1);
+  }
+
+  return result;
 }
 
 /* ------------------------------------------------------------------ */

@@ -16,9 +16,6 @@ export type LearnerProfile = {
   /** Top weak subcategories by raw count (descending). Capped to top 8. */
   weakGrammar: WeakGrammarEntry[];
 
-  /** Words the learner has used correctly in submissions (lowercased, NFC). Capped to 200 most recent. */
-  masteredVocab: string[];
-
   /** Subcategories the learner has NOT erred on in the last 90 days — candidates for harder targets. */
   strongGrammar: string[];
 

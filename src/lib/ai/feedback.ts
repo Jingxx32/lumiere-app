@@ -73,7 +73,7 @@ CRITICAL RULES:
 - fr_examples must contain 2–3 correct French sentences illustrating the correct usage.
 - overall_level_estimate is your best CEFR estimate of the student's level based on this writing sample.
 - summary_en is a single sentence summarising the overall quality of the submission.
-- rule_id should be one of the seeded rule IDs when applicable (use the subcategory key as the id, e.g. pc_vs_imparfait, noun_gender, adjective_agreement, tense_choice, subjonctif_basic, negation_de_rule, verb_preposition, partitive, conjugation_present, conjugation_passe_compose, auxiliary_choice, past_participle_agreement, futur_vs_conditionnel, adjective_position, article_noun_mismatch, definite_vs_indefinite, article_omission, contraction, place_preposition, time_preposition, general_preposition, subject_pronoun, object_pronoun, y_en, stressed_pronoun, negation_structure, question_formation, wrong_word, anglicism, word_form, accent, cedilla, homophone, liaison_elision, spelling, word_order, awkward_structure); otherwise null.`,
+- rule_id should be the matching subcategory key when applicable (same value as subcategory), one of: ${SUBCATEGORY_KEYS.join(", ")}; otherwise null.`,
       },
       {
         role: "user",

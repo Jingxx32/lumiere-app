@@ -1,4 +1,5 @@
-"use server";
+// Plain server module (not a "use server" Server Action file): called only from
+// server actions in lib/actions, never directly from the client.
 
 import { toFile } from "openai";
 import { openai, MODELS } from "./client";

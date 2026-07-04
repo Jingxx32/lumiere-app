@@ -1,10 +1,10 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { tcfSets, tcfQuestions } from "@/lib/db/schema";
+import { tcfSets, tcfQuestions, tcfLevelEnum } from "@/lib/db/schema";
 import { eq, and, asc } from "drizzle-orm";
 
-export type TcfLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+export type TcfLevel = (typeof tcfLevelEnum.enumValues)[number];
 
 export interface TcfSetWithCounts {
   id: string;

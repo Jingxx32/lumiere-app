@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, desc, count, gte, inArray } from "drizzle-orm";
+import { eq, desc, count, gte } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { errors, submissions, userSettings } from "@/lib/db/schema";
@@ -18,8 +18,6 @@ import {
 /*  Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-const RECENT_SUBMISSION_LIMIT = 50;
-const MASTERED_VOCAB_CAP = 200;
 const STRONG_WINDOW_DAYS = 90;
 const TREND_WINDOW_DAYS = 30;
 
@@ -50,7 +48,6 @@ export async function buildLearnerProfile(): Promise<LearnerProfile> {
     errTotalRow,
     weakRows,
     trendRows,
-    recentSubRows,
     recentSubcatRows,
   ] = await Promise.all([
     db
@@ -79,11 +76,6 @@ export async function buildLearnerProfile(): Promise<LearnerProfile> {
       })
       .from(errors)
       .where(gte(errors.createdAt, cutoff60)),
-    db
-      .select()
-      .from(submissions)
-      .orderBy(desc(submissions.submittedAt))
-      .limit(RECENT_SUBMISSION_LIMIT),
     db
       .select({ subcategory: errors.subcategory })
       .from(errors)
@@ -117,48 +109,6 @@ export async function buildLearnerProfile(): Promise<LearnerProfile> {
     };
   });
 
-  // Mastered vocab: tokens from recent submissions, excluding any token inside an error span.
-  let masteredVocab: string[] = [];
-  if (recentSubRows.length > 0) {
-    const subIds = recentSubRows.map((s) => s.id);
-    const errorSpans = await db
-      .select({
-        submissionId: errors.submissionId,
-        spanStart: errors.spanStart,
-        spanEnd: errors.spanEnd,
-      })
-      .from(errors)
-      .where(inArray(errors.submissionId, subIds));
-
-    const spansBySub = new Map<string, Array<[number, number]>>();
-    for (const span of errorSpans) {
-      const arr = spansBySub.get(span.submissionId) ?? [];
-      arr.push([span.spanStart, span.spanEnd]);
-      spansBySub.set(span.submissionId, arr);
-    }
-
-    const wordRe = /\p{L}+/gu;
-    const seen = new Set<string>();
-    for (const sub of recentSubRows) {
-      const spans = spansBySub.get(sub.id) ?? [];
-      const text = sub.contentFr;
-      for (const match of text.matchAll(wordRe)) {
-        const start = match.index ?? 0;
-        const end = start + match[0].length;
-        const overlapsError = spans.some(
-          ([s, e]) => start < e && end > s,
-        );
-        if (overlapsError) continue;
-        const token = match[0].toLowerCase().normalize("NFC");
-        if (token.length < 2) continue;
-        seen.add(token);
-        if (seen.size >= MASTERED_VOCAB_CAP) break;
-      }
-      if (seen.size >= MASTERED_VOCAB_CAP) break;
-    }
-    masteredVocab = Array.from(seen);
-  }
-
   // Strong grammar: subcategories absent from the last 90 days of errors.
   const erredRecently = new Set(recentSubcatRows.map((r) => r.subcategory));
   const strongGrammar = ALL_SUBCATEGORIES.filter(
@@ -174,7 +124,6 @@ export async function buildLearnerProfile(): Promise<LearnerProfile> {
     totalSubmissions,
     totalErrors,
     weakGrammar,
-    masteredVocab,
     strongGrammar,
     hasEnoughSignal,
   };

@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { eq, and, desc, count, countDistinct, inArray, gte, asc, type SQL, sql } from "drizzle-orm";
+import { eq, and, desc, count, inArray, gte, asc, type SQL, sql } from "drizzle-orm";
 import { format, parseISO, startOfWeek, addWeeks } from "date-fns";
 import { revalidatePath } from "next/cache";
 
@@ -185,24 +185,6 @@ export async function getErrorCounts(opts?: {
     result[row.category as ErrorCategory] = Number(row.count);
   }
   return result;
-}
-
-/* ------------------------------------------------------------------ */
-/*  getProgressStats                                                    */
-/* ------------------------------------------------------------------ */
-
-export async function getProgressStats(): Promise<{
-  totalErrors: number;
-  totalSubmissions: number;
-}> {
-  const [errResult, subResult] = await Promise.all([
-    db.select({ count: count() }).from(errors),
-    db.select({ count: countDistinct(errors.submissionId) }).from(errors),
-  ]);
-  return {
-    totalErrors: Number(errResult[0]?.count ?? 0),
-    totalSubmissions: Number(subResult[0]?.count ?? 0),
-  };
 }
 
 /* ------------------------------------------------------------------ */

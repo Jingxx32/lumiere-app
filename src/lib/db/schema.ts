@@ -1,4 +1,9 @@
 import { pgEnum, pgTable, text, integer, timestamp, jsonb, boolean, uuid, uniqueIndex, unique, index } from "drizzle-orm/pg-core";
+// Type-only imports (erased at build — they do NOT pull the OpenAI SDK into the
+// schema module, so drizzle-kit stays unaffected).
+import type { FeedbackResult } from "../ai/feedback";
+import type { FrenchVocabEntry } from "../ai/enrich";
+import type { MicroDrillFeedback } from "../ai/micro-drill";
 
 /* ------------------------------------------------------------------ */
 /*  Enums                                                               */
@@ -49,8 +54,6 @@ export const readingSessions = pgTable("reading_sessions", {
   startedAt: timestamp("started_at").notNull().defaultNow(),
   endedAt: timestamp("ended_at"),
   durationSeconds: integer("duration_seconds").notNull().default(0),
-  /** JSON array of { word, surface, lookedUpAt, position } */
-  vocabularyLookedUp: jsonb("vocabulary_looked_up"),
 });
 
 export type ReadingSession = typeof readingSessions.$inferSelect;
@@ -66,9 +69,9 @@ export const writingTasks = pgTable("writing_tasks", {
   }),
   promptEn: text("prompt_en").notNull(),
   /** JSON string[] — vocab the user must use */
-  targetWords: jsonb("target_words").notNull(),
+  targetWords: jsonb("target_words").notNull().$type<string[]>(),
   /** JSON string[] — taxonomy subcategory ids the task targets */
-  targetGrammar: jsonb("target_grammar").notNull(),
+  targetGrammar: jsonb("target_grammar").notNull().$type<string[]>(),
   difficulty: text("difficulty"),
   minWordCount: integer("min_word_count").notNull().default(50),
   maxWordCount: integer("max_word_count").notNull().default(200),
@@ -92,10 +95,10 @@ export const submissions = pgTable(
     wordCount: integer("word_count").notNull().default(0),
     submittedAt: timestamp("submitted_at").notNull().defaultNow(),
     /** Raw AI feedback packet for replay/debug — stored as JSON. */
-    feedbackJson: jsonb("feedback_json"),
+    feedbackJson: jsonb("feedback_json").$type<FeedbackResult>(),
     estimatedLevel: text("estimated_level"),
     /** JSON string[] of praise sentences shown in the Praise card */
-    praise: jsonb("praise"),
+    praise: jsonb("praise").$type<string[]>(),
     summaryEn: text("summary_en"),
   },
   (t) => [index("submissions_task_id_idx").on(t.taskId)],
@@ -125,7 +128,7 @@ export const errors = pgTable(
     triggerContext: text("trigger_context"),
     explanationEn: text("explanation_en").notNull(),
     /** JSON string[] of 2-3 French example sentences */
-    frExamples: jsonb("fr_examples"),
+    frExamples: jsonb("fr_examples").$type<string[]>(),
     ruleId: text("rule_id"),
     microDrill: text("micro_drill"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -150,7 +153,7 @@ export const rules = pgTable("rules", {
   name: text("name").notNull(),
   descriptionEn: text("description_en").notNull(),
   /** JSON string[] of canonical example sentences */
-  examples: jsonb("examples"),
+  examples: jsonb("examples").$type<string[]>(),
 });
 
 export type Rule = typeof rules.$inferSelect;
@@ -171,7 +174,7 @@ export const microDrills = pgTable(
     /** The user's 2-sentence French response. NFC-normalised before insert. */
     responseFr: text("response_fr").notNull(),
     /** Light AI feedback packet — see MicroDrillFeedbackSchema. */
-    feedbackJson: jsonb("feedback_json"),
+    feedbackJson: jsonb("feedback_json").$type<MicroDrillFeedback>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [index("micro_drills_error_id_idx").on(t.errorId)],
@@ -193,16 +196,15 @@ export const vocabularyLookups = pgTable("vocabulary_lookups", {
   cefrLevel: text("cefr_level"),
   inContext: text("in_context"),
   /** JSON string[] of example sentences */
-  examples: jsonb("examples"),
+  examples: jsonb("examples").$type<string[]>(),
   conjugation: text("conjugation"),
   sentenceContext: text("sentence_context"),
   /** Full FrenchVocabEntry per verb_schema_spec.md — null until enriched */
-  richEntry: jsonb("rich_entry"),
+  richEntry: jsonb("rich_entry").$type<FrenchVocabEntry>(),
   enrichedAt: timestamp("enriched_at"),
   lookedUpAt: timestamp("looked_up_at").notNull().defaultNow(),
   /** null = looked up only; non-null = explicitly saved */
   savedAt: timestamp("saved_at"),
-  reviewCount: integer("review_count").notNull().default(0),
 });
 
 export type VocabularyLookup = typeof vocabularyLookups.$inferSelect;
@@ -333,7 +335,7 @@ export const quizQuestions = pgTable(
     type: quizTypeEnum("type").notNull(),
     questionText: text("question_text").notNull(),
     /** JSON string[] for choice questions; null for fill_blank/true_false */
-    options: jsonb("options"),
+    options: jsonb("options").$type<string[]>(),
     /** Flexible answer (D-9): single=index, multi=index[], true_false=bool, fill_blank=string|string[] */
     answer: jsonb("answer").notNull(),
     explanation: text("explanation"),

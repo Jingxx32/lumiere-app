@@ -18,7 +18,6 @@ export async function createReadingSession(documentId: string): Promise<string> 
     id,
     documentId,
     documentTitleSnapshot: doc?.title ?? null,
-    vocabularyLookedUp: [],
   });
   return id;
 }

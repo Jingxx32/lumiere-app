@@ -1,13 +1,18 @@
 export const dynamic = "force-dynamic";
 
-import { KeyRound, CheckCircle, XCircle, ExternalLink, GraduationCap } from "lucide-react";
-import { testApiKey, getCefrLevel } from "@/lib/actions/settings";
+import { KeyRound, CheckCircle, XCircle, ExternalLink, GraduationCap, Mic } from "lucide-react";
+import { testApiKey, getCefrLevel, getSpeakingProfile } from "@/lib/actions/settings";
 import { Button } from "@/components/ui/button";
 import { TestApiKeyButton } from "./_components/test-api-key-button";
 import { CefrLevelPicker } from "./_components/cefr-level-picker";
+import { SpeakingProfileEditor } from "./_components/speaking-profile-editor";
 
 export default async function SettingsPage() {
-  const [status, cefrLevel] = await Promise.all([testApiKey(), getCefrLevel()]);
+  const [status, cefrLevel, speakingProfile] = await Promise.all([
+    testApiKey(),
+    getCefrLevel(),
+    getSpeakingProfile(),
+  ]);
 
   return (
     <div className="px-10 py-10 max-w-2xl mx-auto">
@@ -85,6 +90,18 @@ export default async function SettingsPage() {
           each submission — this is your self-declared baseline.
         </p>
         <CefrLevelPicker currentLevel={cefrLevel} />
+      </section>
+
+      <section className="rounded-2xl border border-border bg-surface p-6 space-y-5 mt-6">
+        <div className="flex items-center gap-2">
+          <Mic className="h-4 w-4 text-muted-foreground" />
+          <h2 className="font-medium text-sm">Speaking Profile</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Personal background used to generate TCF speaking scripts — job, city, family,
+          immigration goals, hobbies, go-to anecdotes. Any language.
+        </p>
+        <SpeakingProfileEditor initialValue={speakingProfile} />
       </section>
     </div>
   );

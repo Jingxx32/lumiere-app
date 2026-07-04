@@ -53,3 +53,28 @@ export async function setCefrLevel(level: CefrLevel): Promise<void> {
     });
   revalidatePath("/settings");
 }
+
+/* ------------------------------------------------------------------ */
+/*  getSpeakingProfile / setSpeakingProfile                            */
+/* ------------------------------------------------------------------ */
+
+export async function getSpeakingProfile(): Promise<string> {
+  const row = await db
+    .select()
+    .from(userSettings)
+    .where(eq(userSettings.key, "speaking_profile"))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+  return row?.value ?? "";
+}
+
+export async function setSpeakingProfile(text: string): Promise<void> {
+  await db
+    .insert(userSettings)
+    .values({ key: "speaking_profile", value: text })
+    .onConflictDoUpdate({
+      target: userSettings.key,
+      set: { value: text, updatedAt: new Date() },
+    });
+  revalidatePath("/settings");
+}

@@ -1,14 +1,17 @@
 "use server";
 
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
   speakingPrompts,
   speakingScripts,
   speakingSessions,
+  speakingTurns,
+  type SessionScores,
   type SpeakingPrompt,
   type SpeakingScript,
+  type SpeakingTurn,
 } from "@/lib/db/schema";
 import { generateSpeakingScript } from "@/lib/ai/speaking-script";
 import { getSpeakingProfile } from "./settings";
@@ -81,4 +84,48 @@ export async function updateScript(scriptId: string, content: string): Promise<v
     .where(eq(speakingScripts.id, scriptId))
     .returning({ promptId: speakingScripts.promptId });
   if (row) revalidatePath(`/speaking/${row.promptId}/script`);
+}
+
+export async function startScriptSession(promptId: string): Promise<string> {
+  const [session] = await db
+    .insert(speakingSessions)
+    .values({ promptId, mode: "script_practice" })
+    .returning({ id: speakingSessions.id });
+  return session.id;
+}
+
+export async function finishScriptSession(sessionId: string): Promise<SessionScores> {
+  const turns = await db
+    .select()
+    .from(speakingTurns)
+    .where(and(eq(speakingTurns.sessionId, sessionId), eq(speakingTurns.role, "user")))
+    .orderBy(speakingTurns.orderIndex, desc(speakingTurns.createdAt));
+
+  // Keep only the latest attempt per sentence (orderIndex)
+  const latest = new Map<number, SpeakingTurn>();
+  for (const t of turns) {
+    if (!latest.has(t.orderIndex)) latest.set(t.orderIndex, t);
+  }
+  const assessed = [...latest.values()].filter((t) => t.assessment);
+  if (assessed.length === 0) throw new Error("No assessed turns in session");
+
+  const avg = (pick: (t: SpeakingTurn) => number) =>
+    Math.round(assessed.reduce((sum, t) => sum + pick(t), 0) / assessed.length);
+
+  const scores: SessionScores = {
+    accuracy: avg((t) => t.assessment!.accuracyScore),
+    fluency: avg((t) => t.assessment!.fluencyScore),
+    completeness: avg((t) => t.assessment!.completenessScore),
+    overall: avg((t) => t.assessment!.pronunciationScore),
+  };
+
+  const [row] = await db
+    .update(speakingSessions)
+    .set({ status: "completed", scores, completedAt: new Date() })
+    .where(eq(speakingSessions.id, sessionId))
+    .returning({ promptId: speakingSessions.promptId });
+
+  revalidatePath("/speaking");
+  if (row) revalidatePath(`/speaking/${row.promptId}/script`);
+  return scores;
 }

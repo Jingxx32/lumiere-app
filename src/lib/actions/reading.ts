@@ -37,8 +37,9 @@ export async function updateReadingProgress(
   documentId: string,
   progress: number,
 ): Promise<void> {
+  const clamped = Math.min(100, Math.max(0, Math.round(progress)));
   await db
     .update(documents)
-    .set({ readingProgress: Math.round(progress) })
+    .set({ readingProgress: clamped })
     .where(eq(documents.id, documentId));
 }

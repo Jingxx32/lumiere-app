@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { eq, and, isNotNull, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
@@ -89,8 +90,15 @@ export async function saveVocabularyWord(word: string): Promise<void> {
     .update(vocabularyLookups)
     .set({ savedAt: new Date() })
     .where(eq(vocabularyLookups.lemma, lemma));
-  // Fire-and-forget enrichment; failure leaves the flat entry intact.
-  void enrichEntry(lemma).catch(() => {});
+  // Enrich after the response is sent (Next's official post-response hook), so
+  // the save returns instantly and the work is still guaranteed to run.
+  after(async () => {
+    try {
+      await enrichEntry(lemma);
+    } catch (err) {
+      console.error(`enrich failed for "${lemma}":`, err);
+    }
+  });
 }
 
 export async function enrichEntry(lemma: string): Promise<void> {
@@ -112,8 +120,18 @@ export async function enrichEntry(lemma: string): Promise<void> {
 export async function getVocabEntries(
   filter: { savedOnly?: boolean } = {},
 ): Promise<VocabEntrySummary[]> {
+  // Summary columns only — never pull the (potentially multi-KB) richEntry jsonb
+  // for the list view.
   const rows = await db
-    .select()
+    .select({
+      lemma: vocabularyLookups.lemma,
+      surface: vocabularyLookups.surface,
+      pos: vocabularyLookups.pos,
+      cefrLevel: vocabularyLookups.cefrLevel,
+      translation: vocabularyLookups.translation,
+      savedAt: vocabularyLookups.savedAt,
+      enrichedAt: vocabularyLookups.enrichedAt,
+    })
     .from(vocabularyLookups)
     .where(filter.savedOnly ? isNotNull(vocabularyLookups.savedAt) : undefined)
     .orderBy(desc(vocabularyLookups.lookedUpAt));

@@ -27,24 +27,45 @@ type Props = {
 export function ReaderShell({ doc, paragraphs, initialSavedWords }: Props) {
   const router = useRouter();
   const articleRef = useRef<HTMLElement>(null);
-  const sessionIdRef = useRef<string | null>(null);
-  const startTimeRef = useRef<number>(Date.now());
   const [savedWords, setSavedWords] = useState<string[]>(initialSavedWords);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
   const level = (doc.estimatedLevel ?? "B1") as CefrLevel;
 
-  // Create reading session on mount; flush duration on unmount
+  // Reading-session lifecycle:
+  //  - Lazy create after 15s so a quick open (or StrictMode's throwaway mount,
+  //    whose cleanup clears the timer before it fires) leaves no noise session.
+  //  - Heartbeat every 30s flushes duration, so a hard tab-close still persists
+  //    the time already spent — an unmount-only flush wouldn't survive that.
   useEffect(() => {
-    createReadingSession(doc.id).then((id) => {
-      sessionIdRef.current = id;
-    });
-    return () => {
-      const duration = Math.round((Date.now() - startTimeRef.current) / 1000);
-      if (sessionIdRef.current) {
-        void updateSessionDuration(sessionIdRef.current, duration);
+    const start = Date.now();
+    let sessionId: string | null = null;
+    let active = true;
+
+    const flush = () => {
+      if (sessionId) {
+        void updateSessionDuration(
+          sessionId,
+          Math.round((Date.now() - start) / 1000),
+        );
       }
+    };
+
+    const createTimer = setTimeout(async () => {
+      const id = await createReadingSession(doc.id);
+      if (active) sessionId = id;
+      // Unmounted while the create was in flight — flush and drop it.
+      else void updateSessionDuration(id, Math.round((Date.now() - start) / 1000));
+    }, 15_000);
+
+    const heartbeat = setInterval(flush, 30_000);
+
+    return () => {
+      active = false;
+      clearTimeout(createTimer);
+      clearInterval(heartbeat);
+      flush();
     };
   }, [doc.id]);
 

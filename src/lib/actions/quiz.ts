@@ -91,39 +91,41 @@ export async function confirmQuizImport(input: {
   const parsed = QuizParseSchema.parse(input.parsed);
 
   const setId = randomUUID();
-  await db.insert(quizSets).values({
-    id: setId,
-    exam: input.exam.trim() || "TCF",
-    number: input.number,
-    section: input.section,
-    title: input.title.trim() || "Untitled set",
-    source: input.source?.trim() || null,
-  });
+  // Pre-generate ids so passages and questions can be batch-inserted.
+  const passageRows = parsed.passages.map((passage, pIndex) => ({
+    id: randomUUID(),
+    setId,
+    orderIndex: pIndex,
+    text: passage.text,
+  }));
+  const questionRows = parsed.passages.flatMap((passage, pIndex) =>
+    passage.questions.map((q, qIndex) => ({
+      id: randomUUID(),
+      passageId: passageRows[pIndex].id,
+      orderIndex: qIndex,
+      type: q.type,
+      questionText: q.questionText,
+      options: q.options,
+      answer: q.correctIndex,
+      explanation: q.explanation,
+    })),
+  );
 
-  for (const [pIndex, passage] of parsed.passages.entries()) {
-    const passageId = randomUUID();
-    await db.insert(quizPassages).values({
-      id: passageId,
-      setId,
-      orderIndex: pIndex,
-      text: passage.text,
+  // All-or-nothing: a mid-way failure must not leave an empty set behind.
+  await db.transaction(async (tx) => {
+    await tx.insert(quizSets).values({
+      id: setId,
+      exam: input.exam.trim() || "TCF",
+      number: input.number,
+      section: input.section,
+      title: input.title.trim() || "Untitled set",
+      source: input.source?.trim() || null,
     });
-
-    if (passage.questions.length > 0) {
-      await db.insert(quizQuestions).values(
-        passage.questions.map((q, qIndex) => ({
-          id: randomUUID(),
-          passageId,
-          orderIndex: qIndex,
-          type: q.type,
-          questionText: q.questionText,
-          options: q.options,
-          answer: q.correctIndex,
-          explanation: q.explanation,
-        })),
-      );
+    await tx.insert(quizPassages).values(passageRows);
+    if (questionRows.length > 0) {
+      await tx.insert(quizQuestions).values(questionRows);
     }
-  }
+  });
 
   revalidatePath("/quiz");
   return { setId };
@@ -138,13 +140,15 @@ export async function submitQuizAttempt(input: {
   score: number;
   total: number;
 }): Promise<QuizAttempt> {
+  const total = Math.max(0, Math.round(input.total));
+  const score = Math.min(total, Math.max(0, Math.round(input.score)));
   const [attempt] = await db
     .insert(quizAttempts)
     .values({
       id: randomUUID(),
       setId: input.setId,
-      score: input.score,
-      total: input.total,
+      score,
+      total,
     })
     .returning();
 

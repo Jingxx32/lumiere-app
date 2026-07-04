@@ -118,41 +118,45 @@ export async function confirmPodcastCloze(input: {
   const payload = ClozePayloadSchema.parse(input.payload);
 
   const setId = randomUUID();
-  await db.insert(quizSets).values({
-    id: setId,
-    exam: "podcast",
-    number: null,
-    section: "dictation",
-    title: input.title.trim() || "Untitled episode",
-    source: input.source?.trim() || null,
-  });
-
   const passageId = randomUUID();
-  await db.insert(quizPassages).values({
-    id: passageId,
-    setId,
-    orderIndex: 0,
-    text: payload.transcript,
-    audioUrl: input.url,
-    sourceType: "asr",
-    sourceUrl: input.url,
-    mediaDuration: payload.durationSec,
-  });
 
-  await db.insert(quizQuestions).values(
-    payload.blanks.map((blank, index) => ({
-      id: randomUUID(),
-      passageId,
-      orderIndex: index,
-      type: "fill_blank" as const,
-      questionText: blank.questionText,
-      options: null,
-      answer: blank.answer,
-      explanation: null,
-      audioStart: blank.audioStart,
-      audioEnd: blank.audioEnd,
-    })),
-  );
+  // All-or-nothing: a mid-way failure must not leave an empty set / blank-less passage.
+  await db.transaction(async (tx) => {
+    await tx.insert(quizSets).values({
+      id: setId,
+      exam: "podcast",
+      number: null,
+      section: "dictation",
+      title: input.title.trim() || "Untitled episode",
+      source: input.source?.trim() || null,
+    });
+
+    await tx.insert(quizPassages).values({
+      id: passageId,
+      setId,
+      orderIndex: 0,
+      text: payload.transcript,
+      audioUrl: input.url,
+      sourceType: "asr",
+      sourceUrl: input.url,
+      mediaDuration: payload.durationSec,
+    });
+
+    await tx.insert(quizQuestions).values(
+      payload.blanks.map((blank, index) => ({
+        id: randomUUID(),
+        passageId,
+        orderIndex: index,
+        type: "fill_blank" as const,
+        questionText: blank.questionText,
+        options: null,
+        answer: blank.answer,
+        explanation: null,
+        audioStart: blank.audioStart,
+        audioEnd: blank.audioEnd,
+      })),
+    );
+  });
 
   revalidatePath("/quiz");
   return { setId };

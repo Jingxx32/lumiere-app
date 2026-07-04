@@ -48,25 +48,30 @@ export function WordLookupPopover({
       if (!sel) return setState({ phase: "hidden" });
       const x = Math.min(sel.rect.left + sel.rect.width / 2, window.innerWidth - 320);
       const y = sel.rect.bottom + window.scrollY + 8;
-      setState({ phase: "loading", word: sel.text, x, y });
+      const requested = sel.text;
+      setState({ phase: "loading", word: requested, x, y });
       startTransition(async () => {
         try {
-          const { lemma, result } = await resolveLookup(sel.text, sel.sentenceContext, source);
+          const { lemma, result } = await resolveLookup(requested, sel.sentenceContext, source);
+          // Ignore a stale response if the user has since selected another word.
           setState((p) =>
-            p.phase === "hidden"
-              ? p
-              : {
+            p.phase !== "hidden" && p.word === requested
+              ? {
                   phase: "ready",
                   lemma,
-                  word: sel.text,
+                  word: requested,
                   result,
                   x,
                   y,
                   sentence: sel.sentenceContext,
-                },
+                }
+              : p,
           );
         } catch {
-          setState({ phase: "hidden" });
+          // Only close if this word is still the one on screen.
+          setState((p) =>
+            p.phase !== "hidden" && p.word === requested ? { phase: "hidden" } : p,
+          );
         }
       });
     },

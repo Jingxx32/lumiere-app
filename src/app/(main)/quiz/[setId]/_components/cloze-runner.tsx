@@ -180,7 +180,7 @@ export function ClozeRunner({
                   <span className="font-medium">
                     {correct ? "Correct." : "Incorrect."}
                   </span>{" "}
-                  {!correct && (
+                  {!correct && accepted.length > 0 && (
                     <span>
                       Correct spelling:{" "}
                       <span className="font-serif font-medium">

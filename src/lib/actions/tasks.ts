@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { writingTasks, submissions, documents, errors } from "@/lib/db/schema";
 import { generateTask } from "@/lib/ai/task";
-import { generateFeedback } from "@/lib/ai/feedback";
+import { generateFeedback, type FeedbackResult } from "@/lib/ai/feedback";
 import { countWords } from "@/lib/cefr";
 import { buildLearnerProfile } from "@/lib/actions/learner-profile";
 import { ERROR_TAXONOMY } from "@/lib/taxonomy";
@@ -115,6 +115,75 @@ export async function practiceFromPattern(
   return taskId;
 }
 
+/**
+ * LLM character offsets are notoriously unreliable. If the reported span doesn't
+ * match `original`, recover it by unique-substring search; otherwise keep the
+ * clamped span. Prevents mis-highlighted or silently dropped error cards.
+ */
+function repairSpan(
+  content: string,
+  original: string,
+  start: number,
+  end: number,
+): { start: number; end: number } {
+  const clampedStart = Math.max(0, Math.min(content.length, start));
+  const clampedEnd = Math.max(clampedStart, Math.min(content.length, end));
+  if (content.slice(clampedStart, clampedEnd) === original) {
+    return { start: clampedStart, end: clampedEnd };
+  }
+  if (original.length > 0) {
+    const idx = content.indexOf(original);
+    // Only trust the search when the substring occurs exactly once in the text.
+    if (idx !== -1 && content.indexOf(original, idx + 1) === -1) {
+      return { start: idx, end: idx + original.length };
+    }
+    console.warn(
+      `[feedback] could not locate span for "${original}" — keeping clamped offsets`,
+    );
+  }
+  return { start: clampedStart, end: clampedEnd };
+}
+
+/** Persist the feedback packet onto a submission and (re)insert its classified errors. */
+async function persistFeedback(
+  submissionId: string,
+  content: string,
+  feedback: FeedbackResult,
+): Promise<void> {
+  await db
+    .update(submissions)
+    .set({
+      feedbackJson: feedback,
+      estimatedLevel: feedback.overall_level_estimate,
+      praise: feedback.praise,
+      summaryEn: feedback.summary_en,
+    })
+    .where(eq(submissions.id, submissionId));
+
+  if (feedback.errors.length > 0) {
+    await db.insert(errors).values(
+      feedback.errors.map((err) => {
+        const span = repairSpan(content, err.original, err.span.start, err.span.end);
+        return {
+          id: randomUUID(),
+          submissionId,
+          spanStart: span.start,
+          spanEnd: span.end,
+          original: err.original,
+          correction: err.correction,
+          category: err.category,
+          subcategory: err.subcategory,
+          triggerContext: err.trigger_context,
+          explanationEn: err.explanation_en,
+          frExamples: err.fr_examples,
+          ruleId: err.rule_id,
+          microDrill: err.micro_drill,
+        };
+      }),
+    );
+  }
+}
+
 export async function createSubmission(taskId: string, contentFr: string): Promise<void> {
   // NFC-normalise so AI-returned character offsets line up with accented chars
   const normalised = contentFr.normalize("NFC");
@@ -147,45 +216,59 @@ export async function createSubmission(taskId: string, contentFr: string): Promi
         normalised,
       );
 
-      // Persist raw packet + top-level fields onto the submission
-      await db
-        .update(submissions)
-        .set({
-          feedbackJson: feedback,
-          estimatedLevel: feedback.overall_level_estimate,
-          praise: feedback.praise,
-          summaryEn: feedback.summary_en,
-        })
-        .where(eq(submissions.id, id));
-
-      // Bulk-insert classified errors (improvements stay in feedbackJson only)
-      if (feedback.errors.length > 0) {
-        await db.insert(errors).values(
-          feedback.errors.map((err) => ({
-            id: randomUUID(),
-            submissionId: id,
-            spanStart: Math.max(0, err.span.start),
-            spanEnd: Math.min(normalised.length, err.span.end),
-            original: err.original,
-            correction: err.correction,
-            category: err.category,
-            subcategory: err.subcategory,
-            triggerContext: err.trigger_context,
-            explanationEn: err.explanation_en,
-            frExamples: err.fr_examples,
-            ruleId: err.rule_id,
-            microDrill: err.micro_drill,
-          })),
-        );
-      }
+      // Persist packet + classified errors (with server-side span repair)
+      await persistFeedback(id, normalised, feedback);
     } catch (err) {
       // Submission is already saved; proceed so the user can see their writing.
-      // feedbackJson remains null — the page shows a retry affordance.
+      // feedbackJson remains null — the feedback page shows a Retry affordance
+      // wired to regenerateFeedback().
       console.error("Feedback generation failed:", err);
     }
   }
 
   redirect(`/practice/${id}/feedback`);
+}
+
+/**
+ * Re-run feedback generation for a submission whose first attempt failed
+ * (feedbackJson is null) or that the user wants re-graded. Re-entrant: clears
+ * any errors from a partial prior run before inserting the fresh set.
+ */
+export async function regenerateFeedback(
+  submissionId: string,
+): Promise<{ ok: boolean }> {
+  const submission = await db
+    .select()
+    .from(submissions)
+    .where(eq(submissions.id, submissionId))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+  if (!submission) return { ok: false };
+
+  const task = await db
+    .select()
+    .from(writingTasks)
+    .where(eq(writingTasks.id, submission.taskId))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+  if (!task) return { ok: false };
+
+  try {
+    const feedback = await generateFeedback(
+      task.promptEn,
+      (task.targetWords as string[]) ?? [],
+      (task.targetGrammar as string[]) ?? [],
+      task.difficulty ?? "B1",
+      submission.contentFr,
+    );
+    await db.delete(errors).where(eq(errors.submissionId, submissionId));
+    await persistFeedback(submissionId, submission.contentFr, feedback);
+    revalidatePath(`/practice/${submissionId}/feedback`);
+    return { ok: true };
+  } catch (err) {
+    console.error("Feedback regeneration failed:", err);
+    return { ok: false };
+  }
 }
 
 export async function getWritingTaskWithDocument(id: string) {

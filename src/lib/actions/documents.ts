@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { eq, desc, ilike, or, and, count, type SQL } from "drizzle-orm";
+import { eq, desc, ilike, or, and, count, sql, type SQL } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -122,7 +122,7 @@ export async function listDocuments(opts?: {
     .select()
     .from(documents)
     .where(filters.length > 0 ? and(...filters) : undefined)
-    .orderBy(desc(documents.lastReadAt), desc(documents.createdAt));
+    .orderBy(sql`${documents.lastReadAt} desc nulls last`, desc(documents.createdAt));
 }
 
 export async function getDocument(id: string) {
@@ -138,7 +138,7 @@ export async function getMostRecentDocument() {
   return db
     .select()
     .from(documents)
-    .orderBy(desc(documents.lastReadAt), desc(documents.createdAt))
+    .orderBy(sql`${documents.lastReadAt} desc nulls last`, desc(documents.createdAt))
     .limit(1)
     .then((r) => r[0] ?? null);
 }

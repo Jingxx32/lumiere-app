@@ -130,6 +130,27 @@ export async function getTcfSetQuestions(
   }));
 }
 
+/** Resolve a question's skill + level from its id, so a bare `?q=<id>` deep link
+ *  can open the correct drill group instead of falling back to listening/A2. */
+export async function getTcfQuestionById(
+  id: string,
+): Promise<{ skill: "listening" | "reading"; level: TcfLevel } | null> {
+  try {
+    const row = (
+      await db
+        .select({ skill: tcfSets.skill, level: tcfQuestions.level })
+        .from(tcfQuestions)
+        .innerJoin(tcfSets, eq(tcfQuestions.setId, tcfSets.id))
+        .where(eq(tcfQuestions.id, id))
+        .limit(1)
+    )[0];
+    return row ? { skill: row.skill, level: row.level as TcfLevel } : null;
+  } catch {
+    // Malformed id (not a uuid) → Postgres throws; treat as not found.
+    return null;
+  }
+}
+
 export async function getTcfDrillQuestions(
   skill: "listening" | "reading",
   level: TcfLevel,

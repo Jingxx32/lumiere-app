@@ -2,7 +2,13 @@
 
 import { eq, and, isNotNull, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { vocabularyLookups, vocabularyOccurrences } from "@/lib/db/schema";
+import {
+  vocabularyLookups,
+  vocabularyOccurrences,
+  documents,
+  tcfQuestions,
+  tcfSets,
+} from "@/lib/db/schema";
 import type { LookupResult } from "@/lib/ai/lookup";
 import { lookupWord } from "@/lib/ai/lookup";
 import { enrichVocab, type FrenchVocabEntry } from "@/lib/ai/enrich";
@@ -128,8 +134,20 @@ export async function getVocabEntryDetail(lemma: string): Promise<VocabEntryDeta
   )[0];
   if (!row) return null;
   const occ = await db
-    .select()
+    .select({
+      sourceType: vocabularyOccurrences.sourceType,
+      documentId: vocabularyOccurrences.documentId,
+      documentTitle: documents.title,
+      tcfQuestionId: vocabularyOccurrences.tcfQuestionId,
+      tcfTestNumber: tcfSets.testNumber,
+      tcfOrderIndex: tcfQuestions.orderIndex,
+      surface: vocabularyOccurrences.surface,
+      sentenceContext: vocabularyOccurrences.sentenceContext,
+    })
     .from(vocabularyOccurrences)
+    .leftJoin(documents, eq(vocabularyOccurrences.documentId, documents.id))
+    .leftJoin(tcfQuestions, eq(vocabularyOccurrences.tcfQuestionId, tcfQuestions.id))
+    .leftJoin(tcfSets, eq(tcfQuestions.setId, tcfSets.id))
     .where(eq(vocabularyOccurrences.lemma, lemma))
     .orderBy(desc(vocabularyOccurrences.createdAt));
   return {
@@ -147,7 +165,10 @@ export async function getVocabEntryDetail(lemma: string): Promise<VocabEntryDeta
     occurrences: occ.map((o) => ({
       sourceType: o.sourceType,
       documentId: o.documentId,
+      documentTitle: o.documentTitle,
       tcfQuestionId: o.tcfQuestionId,
+      tcfTestNumber: o.tcfTestNumber,
+      tcfOrderIndex: o.tcfOrderIndex,
       surface: o.surface,
       sentenceContext: o.sentenceContext,
     })),

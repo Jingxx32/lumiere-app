@@ -8,6 +8,7 @@ import type { FeedbackResult } from "@/lib/ai/feedback";
 import { SourceExcerpt } from "./_components/source-excerpt";
 import { SubmissionText } from "./_components/submission-text";
 import { FeedbackPanel } from "./_components/feedback-panel";
+import { FeedbackRetry } from "./_components/feedback-retry";
 
 export default async function FeedbackPage({
   params,
@@ -52,22 +53,27 @@ export default async function FeedbackPage({
         </div>
       </div>
 
-      {/* Three-column layout: source | submission | feedback */}
-      <div className="max-w-[1200px] mx-auto grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_360px] gap-5 items-start">
-        {/* Left — collapsible source excerpt */}
-        <SourceExcerpt doc={doc} />
+      {feedback === null ? (
+        /* Generation failed — writing is saved; offer a retry */
+        <FeedbackRetry submissionId={submission.id} />
+      ) : (
+        /* Three-column layout: source | submission | feedback */
+        <div className="max-w-[1200px] mx-auto grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_360px] gap-5 items-start">
+          {/* Left — collapsible source excerpt */}
+          <SourceExcerpt doc={doc} />
 
-        {/* Centre — submission with inline error highlights */}
-        <div className="bg-surface rounded-2xl border border-border shadow-sm p-6 space-y-4">
-          <div className="text-[11px] uppercase tracking-wider text-accent font-medium">
-            Your Writing
+          {/* Centre — submission with inline error highlights */}
+          <div className="bg-surface rounded-2xl border border-border shadow-sm p-6 space-y-4">
+            <div className="text-[11px] uppercase tracking-wider text-accent font-medium">
+              Your Writing
+            </div>
+            <SubmissionText contentFr={submission.contentFr} errors={errors} />
           </div>
-          <SubmissionText contentFr={submission.contentFr} errors={errors} />
-        </div>
 
-        {/* Right — feedback panel: praise → errors → improvements */}
-        <FeedbackPanel feedback={feedback} errors={errors} />
-      </div>
+          {/* Right — feedback panel: praise → errors → improvements */}
+          <FeedbackPanel feedback={feedback} errors={errors} />
+        </div>
+      )}
     </div>
   );
 }

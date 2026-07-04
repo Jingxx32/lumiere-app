@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { cn } from "@/lib/utils";
 import { VerbTenses } from "./verb-tenses";
+import { PosDetails } from "./pos-details";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -345,6 +346,9 @@ function DetailPanel({
 
         {detail.saved && detail.enriched && detail.richEntry && (
           <>
+            {/* Register + note + POS-specific structured data */}
+            <PosDetails entry={detail.richEntry} />
+
             {/* Collocations */}
             {detail.richEntry.collocations && detail.richEntry.collocations.length > 0 && (
               <section>
@@ -395,8 +399,10 @@ function DetailPanel({
                 const href = occurrenceHref(o);
                 const label =
                   o.sourceType === "reading"
-                    ? `Document ${o.documentId?.slice(0, 8) ?? "?"}`
-                    : `TCF question`;
+                    ? (o.documentTitle ?? "Untitled document")
+                    : o.tcfTestNumber != null
+                      ? `TCF test ${o.tcfTestNumber} · Q${(o.tcfOrderIndex ?? 0) + 1}`
+                      : "TCF question";
                 return (
                   <li key={i}>
                     <Link

@@ -14,7 +14,10 @@ export type LookupSource =
 export type OccurrenceLink = {
   sourceType: "reading" | "tcf";
   documentId: string | null;
+  documentTitle: string | null;
   tcfQuestionId: string | null;
+  tcfTestNumber: number | null;
+  tcfOrderIndex: number | null;
   surface: string;
   sentenceContext: string | null;
 };

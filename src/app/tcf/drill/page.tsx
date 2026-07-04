@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
-import { getTcfDrillQuestions, type TcfLevel } from "@/lib/actions/tcf";
+import { getTcfDrillQuestions, getTcfQuestionById, type TcfLevel } from "@/lib/actions/tcf";
 import { DrillRunner } from "../_components/drill-runner";
 
 const LEVEL_LABELS: Record<TcfLevel, string> = {
@@ -20,11 +20,22 @@ export default async function TcfDrillPage({
   searchParams: Promise<{ skill?: string; level?: string; q?: string }>;
 }) {
   const { skill: skillParam, level: levelParam, q } = await searchParams;
-  const skill = (skillParam === "reading" ? "reading" : "listening") as "listening" | "reading";
-  const level = (VALID_LEVELS.includes(levelParam as TcfLevel) ? levelParam : "A2") as TcfLevel;
+  let skill = (skillParam === "reading" ? "reading" : "listening") as "listening" | "reading";
+  let level = (VALID_LEVELS.includes(levelParam as TcfLevel) ? levelParam : "A2") as TcfLevel;
+
+  // A `?q=<id>` deep link (e.g. from a vocabulary occurrence) may omit skill/level —
+  // derive them from the question itself so we open its actual drill group.
+  if (q) {
+    const target = await getTcfQuestionById(q);
+    if (target) {
+      skill = target.skill;
+      level = target.level;
+    }
+  }
 
   const questions = await getTcfDrillQuestions(skill, level);
-  const initialIndex = q ? Math.max(0, questions.findIndex((x) => x.id === q)) : 0;
+  const qIndex = q ? questions.findIndex((x) => x.id === q) : 0;
+  const initialIndex = Math.max(0, qIndex);
   const title = skill === "reading" ? "Compréhension écrite" : "Compréhension orale";
 
   return (

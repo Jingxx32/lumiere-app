@@ -97,6 +97,9 @@ export function ImportQuizDialog() {
     return {
       exam: fd.get("exam")?.toString().trim() || "TCF",
       number: numberRaw ? Number(numberRaw) : null,
+      // Reading-only by design: parseQuizFromText is passage-based. Do NOT add
+      // grammar/vocabulary options here without reworking the parser for
+      // standalone (passage-less) MCQs — see code-audit #8.
       section: "reading",
       title: fd.get("title")?.toString().trim() ?? "",
       source: fd.get("source")?.toString().trim() || null,

@@ -4,6 +4,9 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { openai, MODELS } from "./client";
 import { QuizParseSchema, type ParsedQuiz } from "./quiz-schema";
 
+// `section` is intentionally the "reading" literal, not the full quiz_section
+// enum: this parser assumes passage-grouped questions. Widening it to
+// grammar/vocabulary needs parser changes for passage-less MCQs (code-audit #8).
 export async function parseQuizFromText(
   rawText: string,
   section: "reading",

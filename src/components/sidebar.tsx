@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen,
+  CalendarCheck,
   PenLine,
   ListChecks,
   Repeat,
@@ -27,10 +28,16 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   {
+    href: "/today",
+    label: "Today",
+    icon: CalendarCheck,
+    matcher: (p) => p === "/" || p.startsWith("/today"),
+  },
+  {
     href: "/library",
     label: "Library",
     icon: BookOpen,
-    matcher: (p) => p === "/" || p.startsWith("/library") || p.startsWith("/documents"),
+    matcher: (p) => p.startsWith("/library") || p.startsWith("/documents"),
   },
   {
     href: "/vocabulary",

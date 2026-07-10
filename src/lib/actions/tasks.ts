@@ -117,6 +117,16 @@ export async function practiceFromPattern(
 }
 
 /**
+ * One-click writing: generate an archive-driven task (no document) and land
+ * straight on the task stage. Powers the "Écrire maintenant" entry.
+ */
+export async function quickWrite(): Promise<void> {
+  const taskId = await generateWritingTask(null, [], { source: "archive" });
+  revalidatePath("/practice");
+  redirect(`/practice?taskId=${taskId}`);
+}
+
+/**
  * LLM character offsets are notoriously unreliable. If the reported span doesn't
  * match `original`, recover it by unique-substring search; otherwise keep the
  * clamped span. Prevents mis-highlighted or silently dropped error cards.

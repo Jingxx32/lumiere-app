@@ -4,6 +4,7 @@ import { ArrowLeft, BookOpen } from "lucide-react";
 import { getWritingTaskWithDocument } from "@/lib/actions/tasks";
 import { TaskCard } from "./_components/task-card";
 import { WritingForm } from "./_components/writing-form";
+import { QuickWriteButton } from "./_components/quick-write-button";
 
 export default async function PracticePage({
   searchParams,
@@ -14,23 +15,23 @@ export default async function PracticePage({
 
   if (!taskId) {
     return (
-      <div className="max-w-2xl mx-auto px-10 py-24 text-center space-y-4">
+      <div className="max-w-2xl mx-auto px-10 py-24 text-center space-y-6">
         <div className="flex justify-center mb-2">
           <BookOpen className="h-10 w-10 text-muted-foreground/40" />
         </div>
         <h1 className="font-serif text-2xl font-semibold">Practice</h1>
+        <div className="flex justify-center">
+          <QuickWriteButton />
+        </div>
         <p className="text-muted-foreground text-sm leading-relaxed max-w-sm mx-auto">
-          Open a document in the Reader, or use{" "}
+          Prefer writing about something you read? Open a document in the{" "}
+          <Link href="/library" className="text-accent hover:underline">
+            Library
+          </Link>{" "}
+          and generate a task from it, or hit{" "}
           <span className="font-medium text-foreground">Practice</span> on a recurring
-          pattern in Progress, to receive a personalised writing prompt.
+          pattern in Progress.
         </p>
-        <Link
-          href="/library"
-          className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline mt-2"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Go to Library
-        </Link>
       </div>
     );
   }

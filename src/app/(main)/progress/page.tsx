@@ -12,6 +12,8 @@ import {
 } from "@/lib/actions/errors";
 import { getDocument } from "@/lib/actions/documents";
 import { listRecentTcfAttempts } from "@/lib/actions/tcf";
+import { getReadinessSummary } from "@/lib/actions/readiness";
+import { ReadinessCard } from "./_components/readiness-card";
 import { ProgressFilters } from "./_components/progress-filters";
 import { TcfAttempts } from "./_components/tcf-attempts";
 import { CategorySection } from "./_components/category-section";
@@ -52,7 +54,7 @@ export default async function ProgressPage({
     ? (rawWindow as WindowDays)
     : 30;
 
-  const [errorList, errorCounts, dashboardStats, trend, patterns, filterDoc, tcfAttempts] =
+  const [errorList, errorCounts, dashboardStats, trend, patterns, filterDoc, tcfAttempts, readiness] =
     await Promise.all([
       listErrors({ category: activeCategory, subcategory, documentId, limit: shown + 1 }),
       getErrorCounts({ documentId }),
@@ -61,6 +63,7 @@ export default async function ProgressPage({
       getTopRecurringPatterns(3),
       documentId ? getDocument(documentId) : Promise.resolve(null),
       listRecentTcfAttempts(10),
+      getReadinessSummary(),
     ]);
 
   // Fetched one extra row to detect whether more exist beyond `shown`.
@@ -93,6 +96,11 @@ export default async function ProgressPage({
             ? "No errors yet — start writing to build your archive."
             : `${dashboardStats.totalErrors} ${dashboardStats.totalErrors === 1 ? "error" : "errors"} logged across ${dashboardStats.totalSubmissions} ${dashboardStats.totalSubmissions === 1 ? "submission" : "submissions"}`}
         </p>
+      </div>
+
+      {/* Readiness — independent of the writing-dashboard gate */}
+      <div className="mb-8">
+        <ReadinessCard summary={readiness} />
       </div>
 
       {/* Dashboard layer */}

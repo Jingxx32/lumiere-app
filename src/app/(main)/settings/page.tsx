@@ -1,17 +1,19 @@
 export const dynamic = "force-dynamic";
 
-import { KeyRound, CheckCircle, XCircle, ExternalLink, GraduationCap, Mic } from "lucide-react";
-import { testApiKey, getCefrLevel, getSpeakingProfile } from "@/lib/actions/settings";
+import { KeyRound, CheckCircle, XCircle, ExternalLink, GraduationCap, Mic, Target } from "lucide-react";
+import { testApiKey, getCefrLevel, getSpeakingProfile, getStudyGoal } from "@/lib/actions/settings";
 import { Button } from "@/components/ui/button";
 import { TestApiKeyButton } from "./_components/test-api-key-button";
 import { CefrLevelPicker } from "./_components/cefr-level-picker";
 import { SpeakingProfileEditor } from "./_components/speaking-profile-editor";
+import { StudyGoalEditor } from "./_components/study-goal-editor";
 
 export default async function SettingsPage() {
-  const [status, cefrLevel, speakingProfile] = await Promise.all([
+  const [status, cefrLevel, speakingProfile, studyGoal] = await Promise.all([
     testApiKey(),
     getCefrLevel(),
     getSpeakingProfile(),
+    getStudyGoal(),
   ]);
 
   return (
@@ -90,6 +92,17 @@ export default async function SettingsPage() {
           each submission — this is your self-declared baseline.
         </p>
         <CefrLevelPicker currentLevel={cefrLevel} />
+      </section>
+
+      <section className="rounded-2xl border border-border bg-surface p-6 space-y-5 mt-6">
+        <div className="flex items-center gap-2">
+          <Target className="h-4 w-4 text-muted-foreground" />
+          <h2 className="font-medium text-sm">Study Goal — TCF Canada</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Where you&apos;re headed: target CLB level and (when booked) your exam date.
+        </p>
+        <StudyGoalEditor initial={studyGoal} />
       </section>
 
       <section className="rounded-2xl border border-border bg-surface p-6 space-y-5 mt-6">

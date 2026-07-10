@@ -1,6 +1,6 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { openai, MODELS } from "@/lib/ai/client";
 import { db } from "@/lib/db";
@@ -77,4 +77,53 @@ export async function setSpeakingProfile(text: string): Promise<void> {
       set: { value: text, updatedAt: new Date() },
     });
   revalidatePath("/settings");
+}
+
+/* ------------------------------------------------------------------ */
+/*  getStudyGoal / setStudyGoal — the anchor for Readiness & /today    */
+/* ------------------------------------------------------------------ */
+
+export type StudyGoal = {
+  /** Target CLB/NCLC level, 4–10. null = not set. */
+  targetClb: number | null;
+  /** Exam date as YYYY-MM-DD. null = long-term prep, no date yet. */
+  examDate: string | null;
+};
+
+const EXAM_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export async function getStudyGoal(): Promise<StudyGoal> {
+  const rows = await db
+    .select()
+    .from(userSettings)
+    .where(inArray(userSettings.key, ["target_clb", "exam_date"]));
+  const map = new Map(rows.map((r) => [r.key, r.value]));
+  const clb = Number(map.get("target_clb"));
+  const date = map.get("exam_date") ?? "";
+  return {
+    targetClb: Number.isInteger(clb) && clb >= 4 && clb <= 10 ? clb : null,
+    examDate: EXAM_DATE_RE.test(date) ? date : null,
+  };
+}
+
+export async function setStudyGoal(goal: StudyGoal): Promise<void> {
+  const clb =
+    goal.targetClb !== null && Number.isInteger(goal.targetClb) && goal.targetClb >= 4 && goal.targetClb <= 10
+      ? String(goal.targetClb)
+      : "";
+  const date = goal.examDate && EXAM_DATE_RE.test(goal.examDate) ? goal.examDate : "";
+  for (const [key, value] of [
+    ["target_clb", clb],
+    ["exam_date", date],
+  ] as const) {
+    await db
+      .insert(userSettings)
+      .values({ key, value })
+      .onConflictDoUpdate({
+        target: userSettings.key,
+        set: { value, updatedAt: new Date() },
+      });
+  }
+  revalidatePath("/settings");
+  revalidatePath("/progress");
 }

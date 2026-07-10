@@ -1,13 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import Image from "next/image";
-import { ChevronLeft, ChevronRight, Eye, EyeOff, Check, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, Eye, EyeOff, Check, X, Loader2, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { LevelNav } from "./level-nav";
 import { WordLookupPopover } from "@/components/word-lookup-popover";
 import { recordTcfQuestionAttempt } from "@/lib/actions/tcf";
+import { writeFromTcfPassage } from "@/lib/actions/tasks";
 import type { TcfQuestionForDrill, TcfLevel } from "@/lib/actions/tcf";
 
 const LEVEL_COLORS: Record<TcfLevel, { bg: string; text: string }> = {
@@ -25,6 +27,44 @@ const TYPE_LABELS: Record<TcfQuestionForDrill["type"], string> = {
   dialogue: "Dialogue",
   reading_mcq: "Lecture",
 };
+
+/** P12c: turn the passage just read into writing material — reuses the whole
+ *  task-generation pipeline with the passage as content source. */
+function WritePassageButton({ questionId }: { questionId: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [failed, setFailed] = useState(false);
+
+  function handleClick() {
+    setFailed(false);
+    startTransition(async () => {
+      try {
+        const taskId = await writeFromTcfPassage(questionId);
+        router.push(`/practice?taskId=${taskId}`);
+      } catch {
+        setFailed(true);
+      }
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={pending}
+        className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-surface px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-60"
+      >
+        {pending ? (
+          <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Génération…</>
+        ) : (
+          <><PenLine className="h-3.5 w-3.5" /> Écrire sur ce texte</>
+        )}
+      </button>
+      {failed && <span className="text-xs text-danger">Échec — réessayez.</span>}
+    </div>
+  );
+}
 
 interface DrillRunnerProps {
   questions: TcfQuestionForDrill[];
@@ -162,9 +202,12 @@ export function DrillRunner({
 
           {/* Reading — text passage or document image */}
           {q.type === "reading_mcq" && q.passage && (
-            <article className="reading-prose rounded-lg border border-border/50 bg-surface-muted/40 px-5 py-4 whitespace-pre-wrap">
-              {q.passage}
-            </article>
+            <div className="space-y-2">
+              <article className="reading-prose rounded-lg border border-border/50 bg-surface-muted/40 px-5 py-4 whitespace-pre-wrap">
+                {q.passage}
+              </article>
+              <WritePassageButton questionId={q.id} />
+            </div>
           )}
           {q.type === "reading_mcq" && !q.passage && q.imagePath && (
             <div className="rounded-lg overflow-hidden border border-border/50 bg-surface-muted">

@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { writingTasks, submissions, documents, errors } from "@/lib/db/schema";
+import { writingTasks, submissions, documents, errors, tcfQuestions, tcfSets } from "@/lib/db/schema";
 import { generateTask } from "@/lib/ai/task";
 import { generateFeedback, type FeedbackResult } from "@/lib/ai/feedback";
 import { countWords } from "@/lib/cefr";
@@ -124,6 +124,50 @@ export async function quickWrite(): Promise<void> {
   const taskId = await generateWritingTask(null, [], { source: "archive" });
   revalidatePath("/practice");
   redirect(`/practice?taskId=${taskId}`);
+}
+
+/**
+ * Generate a writing task anchored to a TCF reading passage — turns the 1500+
+ * levelled passages already in the bank into zero-cost writing material.
+ * Returns the task id; the (client) caller navigates to the task stage.
+ */
+export async function writeFromTcfPassage(questionId: string): Promise<string> {
+  const row = await db
+    .select({
+      passage: tcfQuestions.passage,
+      level: tcfQuestions.level,
+      testNumber: tcfSets.testNumber,
+    })
+    .from(tcfQuestions)
+    .innerJoin(tcfSets, eq(tcfQuestions.setId, tcfSets.id))
+    .where(eq(tcfQuestions.id, questionId))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+  if (!row?.passage) throw new Error("Question has no text passage");
+
+  const profile = await buildLearnerProfile();
+  const result = await generateTask(
+    `TCF lecture · test ${row.testNumber}`,
+    "news",
+    row.passage,
+    row.level,
+    [],
+    { profile },
+  );
+
+  const id = randomUUID();
+  await db.insert(writingTasks).values({
+    id,
+    documentId: null,
+    promptEn: result.prompt_en,
+    targetWords: result.target_words,
+    targetGrammar: result.target_grammar,
+    difficulty: result.difficulty,
+    minWordCount: result.min_word_count,
+    maxWordCount: result.max_word_count,
+  });
+  revalidatePath("/practice");
+  return id;
 }
 
 /**

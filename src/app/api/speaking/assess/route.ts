@@ -4,6 +4,10 @@ import { db } from "@/lib/db";
 import { speakingTurns } from "@/lib/db/schema";
 import { assessPronunciation } from "@/lib/speech/azure";
 
+/** ~30s of 16kHz mono PCM16 WAV is <1MB; 10MB is a generous ceiling. */
+const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(request: Request) {
   let form: FormData;
   try {
@@ -15,8 +19,16 @@ export async function POST(request: Request) {
   if (!(audio instanceof File)) {
     return Response.json({ error: "missing_audio" }, { status: 400 });
   }
+  if (audio.size > MAX_AUDIO_BYTES) {
+    return Response.json({ error: "audio_too_large" }, { status: 413 });
+  }
   const referenceText = (form.get("referenceText") as string | null)?.trim() || null;
-  const sessionId = (form.get("sessionId") as string | null) || null;
+  // sessionId is interpolated into a filesystem path — accept UUIDs only.
+  const sessionIdRaw = (form.get("sessionId") as string | null) || null;
+  if (sessionIdRaw && !UUID_RE.test(sessionIdRaw)) {
+    return Response.json({ error: "invalid_session" }, { status: 400 });
+  }
+  const sessionId = sessionIdRaw;
   const orderIndexRaw = form.get("orderIndex") as string | null;
 
   const wav = Buffer.from(await audio.arrayBuffer());

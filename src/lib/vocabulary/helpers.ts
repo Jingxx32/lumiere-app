@@ -9,11 +9,20 @@ import { db } from "@/lib/db";
 import { vocabularyLookups, vocabularyAliases, vocabularyOccurrences } from "@/lib/db/schema";
 import type { LookupResult } from "@/lib/ai/lookup";
 
+/** Either the root client or a transaction handle — lets callers group the
+ *  entry/alias/occurrence writes into one atomic unit. */
+export type Dbx = typeof db | Parameters<Parameters<(typeof db)["transaction"]>[0]>[0];
+
 export const norm = (s: string) => s.toLowerCase().normalize("NFC").trim();
 
 /** Upsert the lemma entry (never overwrites richEntry/savedAt/enrichedAt). */
-export async function upsertEntry(lemma: string, surface: string, result: LookupResult) {
-  await db
+export async function upsertEntry(
+  lemma: string,
+  surface: string,
+  result: LookupResult,
+  dbx: Dbx = db,
+) {
+  await dbx
     .insert(vocabularyLookups)
     .values({
       id: randomUUID(),
@@ -42,8 +51,8 @@ export async function upsertEntry(lemma: string, surface: string, result: Lookup
     });
 }
 
-export async function upsertAlias(surface: string, lemma: string) {
-  await db
+export async function upsertAlias(surface: string, lemma: string, dbx: Dbx = db) {
+  await dbx
     .insert(vocabularyAliases)
     .values({ surface, lemma, createdAt: new Date() })
     .onConflictDoNothing();
@@ -56,8 +65,8 @@ export async function recordOccurrence(opts: {
   sourceType: "reading" | "tcf";
   documentId?: string | null;
   tcfQuestionId?: string | null;
-}) {
-  await db
+}, dbx: Dbx = db) {
+  await dbx
     .insert(vocabularyOccurrences)
     .values({
       id: randomUUID(),

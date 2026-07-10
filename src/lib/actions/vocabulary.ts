@@ -59,18 +59,21 @@ export async function resolveLookup(
     }
   }
 
-  // Cache miss — Tier 1 AI
+  // Cache miss — Tier 1 AI. The three writes are one atomic unit: a partial
+  // failure would otherwise leave an entry without its alias/occurrence.
   const result = await lookupWord(surface, sentenceContext);
   const resolved = norm(result.lemma || surface);
-  await upsertEntry(resolved, surface, result);
-  await upsertAlias(norm(surface), resolved);
-  await recordOccurrence({
-    lemma: resolved,
-    surface,
-    sentenceContext,
-    sourceType: source.type,
-    documentId: source.type === "reading" ? source.documentId : null,
-    tcfQuestionId: source.type === "tcf" ? source.tcfQuestionId : null,
+  await db.transaction(async (tx) => {
+    await upsertEntry(resolved, surface, result, tx);
+    await upsertAlias(norm(surface), resolved, tx);
+    await recordOccurrence({
+      lemma: resolved,
+      surface,
+      sentenceContext,
+      sourceType: source.type,
+      documentId: source.type === "reading" ? source.documentId : null,
+      tcfQuestionId: source.type === "tcf" ? source.tcfQuestionId : null,
+    }, tx);
   });
   return { lemma: resolved, surface, result, cached: false };
 }

@@ -123,7 +123,7 @@ export function Sidebar() {
 
       <div className="mt-auto px-3">
         <p className="text-[11px] uppercase tracking-wider text-subtle-foreground">
-          v0.1 · self
+          v0.2 · self
         </p>
       </div>
     </aside>

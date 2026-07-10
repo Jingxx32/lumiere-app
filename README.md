@@ -22,17 +22,14 @@ Every error flows into your persistent learner profile
 Your trends and weak spots feed the next task
 ```
 
-## Status — v0.1 (Sprint 1 complete)
+## Status — v0.2 + Speaking Phase 1
 
-| Sprint | Scope | Status |
-|--------|-------|--------|
-| **S1** | Scaffold, DB schema, Library, Document Reader (basic) | ✅ |
-| S2 | Click-to-define vocabulary lookup (OpenAI) | next |
-| S3 | "Generate Writing Task" anchored to a document | |
-| S4 | **★ Writing feedback ★** structured + persisted | |
-| S5 | Errors archive view | |
-| S6 | Progress dashboard with trend charts | |
-| S7 | Learner profile drives task generation | |
+| Phase | Scope | Status |
+|-------|-------|--------|
+| **MVP S1–S7** | Library + Reader, click-to-define lookup, writing tasks, **structured writing feedback**, errors archive, progress dashboard, learner profile | ✅ |
+| **v0.2 S8–S10** | Generic quiz engine, podcast cloze dictation (Whisper word timestamps), conjugation drills (LEFFF, deterministic), TCF listening/reading bank (~3200 questions, drill + exam) | ✅ |
+| **Speaking P1** | TCF Expression orale read-aloud + Azure pronunciation assessment (needs `AZURE_SPEECH_KEY`) | ✅ merged |
+| Next | TCF error loop (per-question attempts → smart re-drill → skill-tag profile), `/today` daily plan | in progress |
 
 ## Quick start
 
@@ -40,15 +37,13 @@ Your trends and weak spots feed the next task
 # 1. install
 npm install
 
-# 2. initialise the local SQLite database
+# 2. point DATABASE_URL at a PostgreSQL database and apply migrations
+#    .env needs: DATABASE_URL, OPENAI_API_KEY (and AZURE_SPEECH_KEY/REGION for speaking)
 npm run db:init
 
-# 3. (optional) seed three sample French texts
+# 3. (optional) seed sample French texts + grammar rules
 npm run db:seed
-
-# 4. add your OpenAI key when you reach S2
-cp .env.example .env
-# then edit .env and put your real OPENAI_API_KEY
+npm run db:seed-rules
 
 # 5. run the dev server
 npm run dev
@@ -62,8 +57,8 @@ Open <http://localhost:3000> — you'll be redirected to **Library**.
 |-------|--------|
 | Framework | Next.js 16 (App Router) + React 19 + TypeScript |
 | Styling | Tailwind CSS v4 + custom warm-beige + french-blue design tokens |
-| Database | SQLite via `better-sqlite3`, accessed through Drizzle ORM |
-| AI | OpenAI API (added in S2+) — structured outputs with Zod schemas |
+| Database | PostgreSQL (Azure) via `postgres` (postgres.js) + Drizzle ORM |
+| AI | OpenAI API (GPT-4o/4o-mini, Whisper) — structured outputs with Zod; Azure Speech for pronunciation |
 | UI primitives | Radix UI (Dialog, Popover, Slot) — minimal, owned components |
 | Icons | Lucide |
 | Fonts | Inter (UI) + Source Serif 4 (reading + display) |
@@ -73,33 +68,25 @@ Open <http://localhost:3000> — you'll be redirected to **Library**.
 ```
 src/
 ├── app/
-│   ├── layout.tsx              # Root layout + Sidebar
-│   ├── page.tsx                # → redirects to /library
-│   ├── library/                # The library page
-│   │   ├── page.tsx
-│   │   └── _components/
-│   ├── documents/[id]/         # Document Reader
-│   ├── practice/               # Coming in S3
-│   ├── progress/               # Coming in S6
-│   └── settings/
-├── components/
-│   ├── sidebar.tsx
-│   └── ui/                     # Button, Card, Dialog, Chip, Input...
+│   ├── (main)/                 # Sidebar shell: library, documents, practice,
+│   │                           #   quiz, vocabulary, conjugation, speaking,
+│   │                           #   progress, settings
+│   ├── tcf/                    # Standalone TCF layout: drill + exam
+│   ├── api/speaking/assess/    # Audio upload → Azure pronunciation assessment
+│   └── page.tsx                # → redirects to the default home
+├── components/                 # Sidebar, lookup popover, ui/ primitives
+├── hooks/
 └── lib/
-    ├── db/
-    │   ├── schema.ts           # All 6 tables (documents → errors)
-    │   └── index.ts            # Drizzle client
-    ├── actions/
-    │   └── documents.ts        # Server actions for documents
+    ├── db/schema.ts            # ~23 tables, single source of truth
+    ├── actions/                # ALL db access (server actions, no API layer)
+    ├── ai/                     # OpenAI wrappers (lookup, feedback, task, …)
+    ├── speech/azure.ts         # Azure pronunciation assessment
     ├── taxonomy.ts             # ★ Error taxonomy (the soul) ★
-    ├── cefr.ts                 # CEFR utilities
-    └── utils.ts                # cn() helper
+    └── tcf/, vocabulary/, conjugation/, pdf/ …
 
 drizzle/                        # Generated migration SQL
-scripts/
-├── db-init.ts                  # Apply migrations
-└── seed.ts                     # Insert sample French texts
-data/                           # SQLite file (gitignored)
+scripts/                        # db-init/seed + TCF import & TTS pipeline
+docs/                           # PRDs, audits, superpowers/{specs,plans}
 ```
 
 ## The error taxonomy

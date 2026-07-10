@@ -11,6 +11,10 @@ import { FeedbackPanel } from "./_components/feedback-panel";
 import { FeedbackRetry } from "./_components/feedback-retry";
 import { FeedbackPending } from "./_components/feedback-pending";
 
+/** after() isn't durable — a dev-server restart mid-generation strands the
+ *  submission in 'pending'. Past this age we stop spinning and offer retry. */
+const STALE_PENDING_MS = 3 * 60_000;
+
 export default async function FeedbackPage({
   params,
 }: {
@@ -55,12 +59,17 @@ export default async function FeedbackPage({
       </div>
 
       {feedback === null ? (
-        submission.feedbackStatus === "pending" ? (
+        submission.feedbackStatus === "pending" &&
+        Date.now() - submission.submittedAt.getTime() < STALE_PENDING_MS ? (
           /* Still generating in the background — poll until ready */
           <FeedbackPending />
         ) : (
-          /* Generation failed — writing is saved; offer a retry */
-          <FeedbackRetry submissionId={submission.id} />
+          /* Generation failed — or a pending after() job died with the server
+             process and will never flip the status. Either way: offer retry. */
+          <FeedbackRetry
+            submissionId={submission.id}
+            stalePending={submission.feedbackStatus === "pending"}
+          />
         )
       ) : (
         /* Three-column layout: source | submission | feedback */

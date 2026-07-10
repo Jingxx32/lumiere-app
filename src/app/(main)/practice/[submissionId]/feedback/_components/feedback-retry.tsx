@@ -7,7 +7,15 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { regenerateFeedback } from "@/lib/actions/tasks";
 import { Button } from "@/components/ui/button";
 
-export function FeedbackRetry({ submissionId }: { submissionId: string }) {
+export function FeedbackRetry({
+  submissionId,
+  stalePending = false,
+}: {
+  submissionId: string;
+  /** True when the submission is stuck in 'pending' past the staleness window
+   *  (background job likely died) rather than having failed outright. */
+  stalePending?: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [failed, setFailed] = useState(false);
@@ -26,10 +34,13 @@ export function FeedbackRetry({ submissionId }: { submissionId: string }) {
 
   return (
     <div className="max-w-md mx-auto rounded-2xl border border-border bg-surface shadow-sm px-8 py-10 text-center space-y-4">
-      <h2 className="font-serif text-xl font-semibold">Feedback generation failed</h2>
+      <h2 className="font-serif text-xl font-semibold">
+        {stalePending ? "Feedback is taking too long" : "Feedback generation failed"}
+      </h2>
       <p className="text-sm text-muted-foreground">
-        Your writing is saved. The AI feedback didn&apos;t come through — this can
-        happen on a timeout or rate limit. Try again.
+        {stalePending
+          ? "The background job seems to have died (this can happen if the server restarted). Your writing is safe — retry now."
+          : "Your writing is saved. The AI feedback didn't come through — this can happen on a timeout or rate limit. Try again."}
       </p>
       <Button onClick={handleRetry} disabled={pending}>
         {pending ? (

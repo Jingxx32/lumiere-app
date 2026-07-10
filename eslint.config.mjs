@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Agent worktrees are throwaway checkouts, not part of this project's lint surface.
+    ".claude/**",
   ]),
 ]);
 

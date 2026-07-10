@@ -34,8 +34,9 @@ next-env.d.ts
 .tsbuildinfo
 
 # TCF copyrighted exam content — kept local only
+# (the import/TTS pipeline *code* in scripts/ IS tracked; only media/data stays local)
 public/media/
-scripts/
+scripts/.tcf-cache/
 
 # worktrees, temp & test artifacts
 .claude/worktrees/

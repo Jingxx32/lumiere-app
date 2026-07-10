@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
-import { getTcfDrillQuestions, getTcfQuestionById, type TcfLevel } from "@/lib/actions/tcf";
+import {
+  getTcfDrillQuestions,
+  getTcfQuestionById,
+  getTcfDoneQuestionIds,
+  type TcfLevel,
+} from "@/lib/actions/tcf";
 import { getAllSavedLemmas } from "@/lib/actions/vocabulary";
 import { DrillRunner } from "../_components/drill-runner";
 
@@ -34,9 +39,10 @@ export default async function TcfDrillPage({
     }
   }
 
-  const [questions, savedLemmas] = await Promise.all([
+  const [questions, savedLemmas, doneIds] = await Promise.all([
     getTcfDrillQuestions(skill, level),
     getAllSavedLemmas(),
+    getTcfDoneQuestionIds(skill, level),
   ]);
   const qIndex = q ? questions.findIndex((x) => x.id === q) : 0;
   const initialIndex = Math.max(0, qIndex);
@@ -71,7 +77,12 @@ export default async function TcfDrillPage({
           </p>
         </div>
       ) : (
-        <DrillRunner questions={questions} initialIndex={initialIndex} savedLemmas={savedLemmas} />
+        <DrillRunner
+          questions={questions}
+          initialIndex={initialIndex}
+          savedLemmas={savedLemmas}
+          initialDoneIds={doneIds}
+        />
       )}
     </div>
   );

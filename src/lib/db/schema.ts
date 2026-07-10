@@ -460,6 +460,9 @@ export const tcfQuestions = pgTable(
   answer: integer("answer").notNull(),
   /** French transcript / dialogue text — fed to TTS later (listening only) */
   transcript: text("transcript"),
+  /** Comprehension skill-tag ids (1–2, primary first) — see the TCF error-loop
+   *  spec §3.3. null = not yet tagged (tagging script is a later step). */
+  skillTags: jsonb("skill_tags").$type<string[]>(),
   /** Reading passage text — set for text-sourced reading questions (e.g. test 40 PDF); null when the passage is an image */
   passage: text("passage"),
   translationEn: text("translation_en"),
@@ -496,6 +499,39 @@ export const tcfAttempts = pgTable(
 );
 
 export type TcfAttempt = typeof tcfAttempts.$inferSelect;
+
+/* One row per answered question — drill answers write-through, exam answers
+ * batch on submit. The foundation of the TCF error loop (spec §3.1). */
+export const tcfAttemptModeEnum = pgEnum("tcf_attempt_mode", ["drill", "exam"]);
+
+export const tcfQuestionAttempts = pgTable(
+  "tcf_question_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // cascade: re-importing a set wipes its per-question history — accepted
+    // tradeoff (spec §2); whole-exam totals in tcf_attempts survive.
+    questionId: uuid("question_id")
+      .notNull()
+      .references(() => tcfQuestions.id, { onDelete: "cascade" }),
+    mode: tcfAttemptModeEnum("mode").notNull(),
+    examAttemptId: uuid("exam_attempt_id").references(() => tcfAttempts.id, {
+      onDelete: "set null",
+    }),
+    /** Chosen option index 0–3 */
+    chosen: integer("chosen").notNull(),
+    /** Denormalised on purpose: aggregations skip a join, and history keeps
+     *  the verdict as judged even if a question's answer is later corrected. */
+    correct: boolean("correct").notNull(),
+    answeredAt: timestamp("answered_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("tcf_qa_question_id_idx").on(t.questionId),
+    index("tcf_qa_answered_at_idx").on(t.answeredAt),
+    index("tcf_qa_exam_attempt_id_idx").on(t.examAttemptId),
+  ],
+);
+
+export type TcfQuestionAttempt = typeof tcfQuestionAttempts.$inferSelect;
 
 /* ------------------------------------------------------------------ */
 /*  Speaking — TCF Expression orale practice                           */

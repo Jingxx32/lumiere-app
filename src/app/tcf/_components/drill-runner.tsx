@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { LevelNav } from "./level-nav";
 import { WordLookupPopover } from "@/components/word-lookup-popover";
-import { useDoneQuestions } from "@/hooks/use-done-questions";
+import { recordTcfQuestionAttempt } from "@/lib/actions/tcf";
 import type { TcfQuestionForDrill, TcfLevel } from "@/lib/actions/tcf";
 
 const LEVEL_COLORS: Record<TcfLevel, { bg: string; text: string }> = {
@@ -30,12 +30,15 @@ interface DrillRunnerProps {
   questions: TcfQuestionForDrill[];
   initialIndex?: number;
   savedLemmas?: string[];
+  /** Question ids with recorded attempts — DB-derived "done" marks. */
+  initialDoneIds?: string[];
 }
 
 export function DrillRunner({
   questions,
   initialIndex = 0,
   savedLemmas: initialSavedLemmas = [],
+  initialDoneIds = [],
 }: DrillRunnerProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -43,7 +46,7 @@ export function DrillRunner({
   const [chosen, setChosen] = useState<number | undefined>(undefined);
   const [savedLemmas, setSavedLemmas] = useState<string[]>(initialSavedLemmas);
   const contentRef = useRef<HTMLDivElement>(null);
-  const { done, markDone, clearAll } = useDoneQuestions();
+  const [done, setDone] = useState<Set<string>>(() => new Set(initialDoneIds));
 
   if (questions.length === 0) {
     return (
@@ -67,15 +70,22 @@ export function DrillRunner({
     setShowAnswer(next);
     // Hiding the answer also clears the selection so the question is fresh again.
     if (!next) setChosen(undefined);
-    // Revealing the answer marks the question as done (persisted in localStorage).
-    if (next) markDone(q.id);
+    // Peeking at the answer is NOT answering — it no longer marks done or
+    // writes an attempt (error-loop spec §4.2).
   }
 
-  // Clicking an option records the choice and immediately reveals the correct answer.
+  // Clicking an option records the choice and immediately reveals the correct
+  // answer. The attempt is persisted fire-and-forget: losing one row on a
+  // network hiccup beats interrupting the drill.
   function choose(optionIndex: number) {
     setChosen(optionIndex);
     setShowAnswer(true);
-    markDone(q.id);
+    setDone((prev) => (prev.has(q.id) ? prev : new Set(prev).add(q.id)));
+    void recordTcfQuestionAttempt({
+      questionId: q.id,
+      chosen: optionIndex,
+      correct: optionIndex === q.answer,
+    }).catch(() => {});
   }
 
   return (
@@ -86,7 +96,6 @@ export function DrillRunner({
         currentIndex={currentIndex}
         onSelect={goTo}
         doneIds={done}
-        onClear={clearAll}
       />
 
       {/* Main question area */}

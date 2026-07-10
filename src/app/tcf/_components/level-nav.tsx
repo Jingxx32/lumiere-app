@@ -7,10 +7,8 @@ interface LevelNavProps {
   questions: TcfQuestionForDrill[];
   currentIndex: number;
   onSelect: (index: number) => void;
-  /** Ids of questions already done (answer revealed). */
+  /** Ids of questions with at least one recorded attempt (DB-derived). */
   doneIds: Set<string>;
-  /** Clear all "done" marks. */
-  onClear: () => void;
 }
 
 const LEVEL_ORDER: TcfLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2"];
@@ -29,7 +27,6 @@ export function LevelNav({
   currentIndex,
   onSelect,
   doneIds,
-  onClear,
 }: LevelNavProps) {
   // Group by level in fixed order
   const byLevel: Record<string, Array<{ q: TcfQuestionForDrill; idx: number }>> = {};
@@ -42,20 +39,11 @@ export function LevelNav({
 
   return (
     <nav className="w-[180px] shrink-0 space-y-4">
-      {/* Done summary + clear */}
-      <div className="flex items-center justify-between h-5">
+      {/* Done summary — answer history is a data asset now, so no "clear" */}
+      <div className="flex items-center h-5">
         <span className="text-[11px] text-muted-foreground">
           {doneCount > 0 ? `${doneCount} fait${doneCount > 1 ? "s" : ""}` : " "}
         </span>
-        {doneCount > 0 && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="text-[11px] text-subtle-foreground hover:text-danger transition-colors"
-          >
-            Effacer
-          </button>
-        )}
       </div>
 
       {LEVEL_ORDER.filter((l) => byLevel[l]).map((level) => (

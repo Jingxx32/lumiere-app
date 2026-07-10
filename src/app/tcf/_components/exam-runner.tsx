@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Check, X, Flag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { recordTcfExamAttempt } from "@/lib/actions/tcf";
-import type { TcfQuestionForDrill, TcfLevel } from "@/lib/actions/tcf";
+import type { TcfQuestionForDrill, TcfLevel, TcfExamAnswer } from "@/lib/actions/tcf";
 import type { TcfPerLevel } from "@/lib/db/schema";
 
 const LEVEL_ORDER: TcfLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2"];
@@ -33,6 +33,27 @@ interface ExamRunnerProps {
   testNumber: number;
 }
 
+/** Single source of truth for exam scoring — used by both the results render
+ *  and the persistence path so the two can never disagree. */
+function computeScore(questions: TcfQuestionForDrill[], answers: Record<number, number>) {
+  let correct = 0;
+  const perLevel: TcfPerLevel = {};
+  const perQuestion: TcfExamAnswer[] = [];
+  questions.forEach((q, idx) => {
+    const entry = (perLevel[q.level] ??= { correct: 0, total: 0 });
+    entry.total++;
+    const chosen = answers[idx];
+    if (chosen === undefined) return; // unanswered — counted in total only
+    const isCorrect = chosen === q.answer;
+    if (isCorrect) {
+      correct++;
+      entry.correct++;
+    }
+    perQuestion.push({ questionId: q.id, chosen, correct: isCorrect });
+  });
+  return { correct, total: questions.length, perLevel, perQuestion };
+}
+
 export function ExamRunner({ questions, skill, testNumber }: ExamRunnerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   // answers[i] = chosen option index for questions[i]
@@ -50,20 +71,10 @@ export function ExamRunner({ questions, skill, testNumber }: ExamRunnerProps) {
 
   const answeredCount = Object.keys(answers).length;
 
-  const score = useMemo(() => {
-    if (!finished) return null;
-    let correct = 0;
-    const perLevel: Partial<Record<TcfLevel, { correct: number; total: number }>> = {};
-    questions.forEach((q, idx) => {
-      const entry = (perLevel[q.level] ??= { correct: 0, total: 0 });
-      entry.total++;
-      if (answers[idx] === q.answer) {
-        correct++;
-        entry.correct++;
-      }
-    });
-    return { correct, total: questions.length, perLevel };
-  }, [finished, answers, questions]);
+  const score = useMemo(
+    () => (finished ? computeScore(questions, answers) : null),
+    [finished, answers, questions],
+  );
 
   if (questions.length === 0) {
     return (
@@ -97,24 +108,17 @@ export function ExamRunner({ questions, skill, testNumber }: ExamRunnerProps) {
     setConfirmFinish(false);
     setCurrentIndex(0);
 
-    // Persist the run so this signal flows into Progress (fire-and-forget).
-    let correct = 0;
-    const perLevel: TcfPerLevel = {};
-    questions.forEach((qq, idx) => {
-      const entry = (perLevel[qq.level] ??= { correct: 0, total: 0 });
-      entry.total++;
-      if (answers[idx] === qq.answer) {
-        correct++;
-        entry.correct++;
-      }
-    });
+    // Persist the run — total + per-level + per-question — so this signal
+    // flows into Progress and the error loop (fire-and-forget).
+    const result = computeScore(questions, answers);
     void recordTcfExamAttempt({
       setId: questions[0]?.setId ?? null,
       skill,
       testNumber,
-      score: correct,
-      total: questions.length,
-      perLevel,
+      score: result.correct,
+      total: result.total,
+      perLevel: result.perLevel,
+      answers: result.perQuestion,
     }).catch(() => {});
   }
 

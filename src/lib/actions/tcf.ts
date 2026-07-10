@@ -2,7 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { tcfSets, tcfQuestions, tcfAttempts, tcfLevelEnum } from "@/lib/db/schema";
+import {
+  tcfSets,
+  tcfQuestions,
+  tcfAttempts,
+  tcfQuestionAttempts,
+  tcfLevelEnum,
+} from "@/lib/db/schema";
 import type { TcfPerLevel, TcfAttempt } from "@/lib/db/schema";
 import { eq, and, asc, desc } from "drizzle-orm";
 
@@ -157,6 +163,8 @@ export async function getTcfQuestionById(
 /*  Exam attempts — the only TCF signal that flows into progress       */
 /* ------------------------------------------------------------------ */
 
+export type TcfExamAnswer = { questionId: string; chosen: number; correct: boolean };
+
 export async function recordTcfExamAttempt(input: {
   setId: string | null;
   skill: "listening" | "reading";
@@ -164,18 +172,66 @@ export async function recordTcfExamAttempt(input: {
   score: number;
   total: number;
   perLevel: TcfPerLevel;
+  /** Per-question detail; unanswered questions are simply absent. */
+  answers?: TcfExamAnswer[];
 }): Promise<void> {
   const total = Math.max(0, Math.round(input.total));
   const score = Math.min(total, Math.max(0, Math.round(input.score)));
-  await db.insert(tcfAttempts).values({
-    setId: input.setId,
-    skill: input.skill,
-    testNumber: input.testNumber,
-    score,
-    total,
-    perLevel: input.perLevel,
+  await db.transaction(async (tx) => {
+    const [attempt] = await tx
+      .insert(tcfAttempts)
+      .values({
+        setId: input.setId,
+        skill: input.skill,
+        testNumber: input.testNumber,
+        score,
+        total,
+        perLevel: input.perLevel,
+      })
+      .returning({ id: tcfAttempts.id });
+    if (input.answers && input.answers.length > 0) {
+      await tx.insert(tcfQuestionAttempts).values(
+        input.answers.map((a) => ({
+          questionId: a.questionId,
+          mode: "exam" as const,
+          examAttemptId: attempt.id,
+          chosen: a.chosen,
+          correct: a.correct,
+        })),
+      );
+    }
   });
   revalidatePath("/progress");
+}
+
+/** Drill write-through: one row per answered question. Fire-and-forget from
+ *  the client — no revalidate, the drill page keeps its own local state. */
+export async function recordTcfQuestionAttempt(input: {
+  questionId: string;
+  chosen: number;
+  correct: boolean;
+}): Promise<void> {
+  await db.insert(tcfQuestionAttempts).values({
+    questionId: input.questionId,
+    mode: "drill",
+    chosen: Math.max(0, Math.round(input.chosen)),
+    correct: input.correct,
+  });
+}
+
+/** Question ids of a drill group with at least one recorded attempt — the
+ *  DB-derived "done" marks that replaced the old localStorage set. */
+export async function getTcfDoneQuestionIds(
+  skill: "listening" | "reading",
+  level: TcfLevel,
+): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ questionId: tcfQuestionAttempts.questionId })
+    .from(tcfQuestionAttempts)
+    .innerJoin(tcfQuestions, eq(tcfQuestionAttempts.questionId, tcfQuestions.id))
+    .innerJoin(tcfSets, eq(tcfQuestions.setId, tcfSets.id))
+    .where(and(eq(tcfSets.skill, skill), eq(tcfQuestions.level, level)));
+  return rows.map((r) => r.questionId);
 }
 
 export async function listRecentTcfAttempts(limit = 10): Promise<TcfAttempt[]> {

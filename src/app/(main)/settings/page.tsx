@@ -2,7 +2,6 @@ export const dynamic = "force-dynamic";
 
 import { KeyRound, CheckCircle, XCircle, ExternalLink, GraduationCap, Mic, Target } from "lucide-react";
 import { testApiKey, getCefrLevel, getSpeakingProfile, getStudyGoal } from "@/lib/actions/settings";
-import { Button } from "@/components/ui/button";
 import { TestApiKeyButton } from "./_components/test-api-key-button";
 import { CefrLevelPicker } from "./_components/cefr-level-picker";
 import { SpeakingProfileEditor } from "./_components/speaking-profile-editor";

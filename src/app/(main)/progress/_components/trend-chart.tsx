@@ -4,7 +4,8 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useTransition } from "react";
 import {
   ResponsiveContainer,
-  LineChart,
+  ComposedChart,
+  Bar,
   Line,
   XAxis,
   YAxis,
@@ -12,13 +13,9 @@ import {
   Legend,
   CartesianGrid,
 } from "recharts";
-import { CATEGORY_STYLES } from "@/lib/category-styles";
-import { ERROR_TAXONOMY } from "@/lib/taxonomy";
-import type { ErrorCategory } from "@/lib/taxonomy";
 import type { TrendBucket } from "@/lib/actions/errors";
 import { cn } from "@/lib/utils";
 
-const CATEGORIES = Object.keys(ERROR_TAXONOMY) as ErrorCategory[];
 const WINDOWS = [30, 90, 365] as const;
 type WindowDays = (typeof WINDOWS)[number];
 
@@ -27,6 +24,32 @@ type Props = {
   windowDays: WindowDays;
 };
 
+function TrendTooltip({
+  active,
+  label,
+  payload,
+}: {
+  active?: boolean;
+  label?: string;
+  payload?: { payload: TrendBucket }[];
+}) {
+  if (!active || !payload?.length) return null;
+  const bucket = payload[0].payload;
+  return (
+    <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs shadow-sm space-y-0.5">
+      <p className="font-medium text-foreground">{label}</p>
+      <p className="text-accent">
+        {bucket.density !== null ? `${bucket.density} errors / 100 words` : "No writing this week"}
+      </p>
+      <p className="text-muted-foreground">
+        {bucket.errors} error{bucket.errors === 1 ? "" : "s"} · {bucket.words.toLocaleString()} words
+      </p>
+    </div>
+  );
+}
+
+/** Weekly error density (errors / 100 words) as the headline line, with words
+ *  written as volume bars — practice volume and quality read separately. */
 export function TrendChart({ data, windowDays }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -41,17 +64,17 @@ export function TrendChart({ data, windowDays }: Props) {
     });
   }
 
-  // Only render lines for categories with at least one non-zero data point
-  const activeCategories = CATEGORIES.filter((cat) =>
-    data.some((bucket) => (bucket[cat] as number | undefined) ?? 0 > 0),
-  );
-
-  const isEmpty = data.length === 0 || activeCategories.length === 0;
+  const isEmpty = data.length === 0 || data.every((b) => b.words === 0 && b.errors === 0);
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-serif text-xl font-semibold">Error trend</h2>
+        <div>
+          <h2 className="font-serif text-xl font-semibold">Error density</h2>
+          <p className="text-[11px] text-muted-foreground">
+            errors per 100 words · bars show words written
+          </p>
+        </div>
         <div className="flex gap-1">
           {WINDOWS.map((w) => (
             <button
@@ -74,33 +97,47 @@ export function TrendChart({ data, windowDays }: Props) {
       <div className="h-64 relative">
         {isEmpty ? (
           <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-sm text-muted-foreground">No errors in this period</p>
+            <p className="text-sm text-muted-foreground">No writing in this period</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+            <ComposedChart data={data} margin={{ top: 4, right: -8, left: -16, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="weekLabel" tick={{ fontSize: 11 }} />
               <YAxis
+                yAxisId="density"
                 tick={{ fontSize: 11 }}
-                tickFormatter={(v) => (Number.isInteger(v) ? String(v) : "")}
+                allowDecimals
+                label={undefined}
+              />
+              <YAxis
+                yAxisId="words"
+                orientation="right"
+                tick={{ fontSize: 11 }}
                 allowDecimals={false}
               />
-              <Tooltip />
+              <Tooltip content={<TrendTooltip />} />
               <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-              {activeCategories.map((cat) => (
-                <Line
-                  key={cat}
-                  type="monotone"
-                  dataKey={cat}
-                  name={ERROR_TAXONOMY[cat].label}
-                  stroke={CATEGORY_STYLES[cat].chartColor}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              ))}
-            </LineChart>
+              <Bar
+                yAxisId="words"
+                dataKey="words"
+                name="Words written"
+                fill="var(--border)"
+                radius={[3, 3, 0, 0]}
+                maxBarSize={28}
+              />
+              <Line
+                yAxisId="density"
+                type="monotone"
+                dataKey="density"
+                name="Errors / 100 words"
+                stroke="var(--accent)"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4 }}
+                connectNulls={false}
+              />
+            </ComposedChart>
           </ResponsiveContainer>
         )}
       </div>

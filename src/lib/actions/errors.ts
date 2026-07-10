@@ -324,42 +324,57 @@ export async function getDashboardStats(): Promise<{
 
 export type TrendBucket = {
   weekLabel: string;
-  [category: string]: number | string;
+  /** Absolute error count that week (tooltip context, not the headline). */
+  errors: number;
+  /** Words written that week — practice volume. */
+  words: number;
+  /** Errors per 100 words. null when nothing was written that week. */
+  density: number | null;
 };
 
+/** Weekly error *density* (errors / 100 words), not raw counts: more writing
+ *  used to push the old absolute-count line up, reading as regression. */
 export async function getErrorTrend(windowDays: 30 | 90 | 365): Promise<TrendBucket[]> {
   const startDate = new Date(Date.now() - windowDays * 86_400_000);
 
-  const rows = await db
-    .select({
-      week: sql<string>`date_trunc('week', ${errors.createdAt})::text`,
-      category: errors.category,
-      count: count(),
-    })
-    .from(errors)
-    .where(gte(errors.createdAt, startDate))
-    .groupBy(sql`date_trunc('week', ${errors.createdAt})`, errors.category)
-    .orderBy(asc(sql`date_trunc('week', ${errors.createdAt})`));
+  const [errorRows, wordRows] = await Promise.all([
+    db
+      .select({
+        week: sql<string>`date_trunc('week', ${errors.createdAt})::text`,
+        count: count(),
+      })
+      .from(errors)
+      .where(gte(errors.createdAt, startDate))
+      .groupBy(sql`date_trunc('week', ${errors.createdAt})`),
+    db
+      .select({
+        week: sql<string>`date_trunc('week', ${submissions.submittedAt})::text`,
+        words: sql<number>`coalesce(sum(${submissions.wordCount}), 0)::int`,
+      })
+      .from(submissions)
+      .where(gte(submissions.submittedAt, startDate))
+      .groupBy(sql`date_trunc('week', ${submissions.submittedAt})`),
+  ]);
 
-  // Bucket counts by week-start (Postgres date_trunc('week') is Monday-based,
+  // Bucket by week-start (Postgres date_trunc('week') is Monday-based,
   // matched here with weekStartsOn: 1).
-  const countsByWeek = new Map<number, Record<string, number>>();
-  for (const row of rows) {
-    const weekStart = startOfWeek(parseISO(row.week), { weekStartsOn: 1 }).getTime();
-    const bucket = countsByWeek.get(weekStart) ?? {};
-    bucket[row.category] = Number(row.count);
-    countsByWeek.set(weekStart, bucket);
-  }
+  const weekKey = (iso: string) => startOfWeek(parseISO(iso), { weekStartsOn: 1 }).getTime();
+  const errorsByWeek = new Map(errorRows.map((r) => [weekKey(r.week), Number(r.count)]));
+  const wordsByWeek = new Map(wordRows.map((r) => [weekKey(r.week), Number(r.words)]));
 
   // Emit a bucket for every week in the window — including empty ones — so the
-  // line chart advances one step per week instead of "skipping" quiet weeks.
+  // chart advances one step per week instead of "skipping" quiet weeks.
   const result: TrendBucket[] = [];
   const end = startOfWeek(new Date(), { weekStartsOn: 1 });
   let cursor = startOfWeek(startDate, { weekStartsOn: 1 });
   while (cursor.getTime() <= end.getTime()) {
+    const errorCount = errorsByWeek.get(cursor.getTime()) ?? 0;
+    const words = wordsByWeek.get(cursor.getTime()) ?? 0;
     result.push({
       weekLabel: format(cursor, "MMM d"),
-      ...(countsByWeek.get(cursor.getTime()) ?? {}),
+      errors: errorCount,
+      words,
+      density: words > 0 ? Math.round((errorCount / words) * 1000) / 10 : null,
     });
     cursor = addWeeks(cursor, 1);
   }

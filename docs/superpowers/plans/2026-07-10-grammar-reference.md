@@ -222,6 +222,27 @@ Expected: `68 entries, 68 unique slugs` (taxonomy keys are already compile-check
 - [ ] **Step 3:** `npx tsc --noEmit` clean (this is what validates every taxonomy key).
 - [ ] **Step 4:** Commit `feat(grammar): curated A2–B1 outline (68 points, taxonomy-mapped)`.
 
+### Task 2b: `common_mistakes` column (2026-07-11 format revision)
+
+> Added after Tasks 1–2 were committed: the note format gains a structured **Common mistakes** block (✗ wrong → ✓ right + reason), rendered with the same visual language as error cards. See the spec's 笔记结构 decision row.
+
+**Files:**
+- Modify: `src/lib/db/schema.ts` — add to `grammarPoints` after `examples`:
+
+```ts
+    /** ✗→✓ learner-error pairs; rendered like error cards. */
+    commonMistakes: jsonb("common_mistakes")
+      .$type<{ wrong: string; right: string; note: string }[]>()
+      .notNull()
+      .default([]),
+```
+
+- Generated: `drizzle/` migration via `npm run db:generate`
+
+- [ ] **Step 1:** Add the column, `npm run db:generate`, `npm run db:init`.
+- [ ] **Step 2:** `npx tsc --noEmit` clean.
+- [ ] **Step 3:** Commit `feat(grammar): common_mistakes column`.
+
 ### Task 3: Notes import pipeline (external AI content — no OpenAI spend)
 
 > **2026-07-11 revision:** the OpenAI drafting module is dropped at the user's request (do NOT call the user's OpenAI API for content generation). Instead the user generates notes with an external AI chatbot using `docs/grammar-notes-prompt.md`, saves them as markdown (Obsidian files or Notion pages), and this task's importer parses them into the DB.
@@ -233,7 +254,7 @@ Expected: `68 entries, 68 unique slugs` (taxonomy keys are already compile-check
 
 **Interfaces:**
 - Consumes: `GRAMMAR_OUTLINE` (Task 2); `grammarPoints` (Task 1)
-- Produces: `parseGrammarNotes(markdown: string): { notes: ParsedNote[]; problems: string[] }` with `ParsedNote = { slug: string; summary: string; descriptionEn: string; examples: { fr: string; en: string }[] }`
+- Produces: `parseGrammarNotes(markdown: string): { notes: ParsedNote[]; problems: string[] }` with `ParsedNote = { slug: string; summary: string; descriptionEn: string; commonMistakes: { wrong: string; right: string; note: string }[]; examples: { fr: string; en: string }[] }`
 
 **Note format** (single source of truth: `docs/grammar-notes-prompt.md` — parser and prompt must stay in sync):
 
@@ -248,6 +269,12 @@ Expected: `68 entries, 68 unique slugs` (taxonomy keys are already compile-check
 
 <markdown-lite: paragraphs, **bold**, *italic*, "- " bullets>
 
+**Common mistakes:**
+
+- ✗ <wrong French sentence>
+  ✓ <corrected French sentence>
+  (<one short reason>)
+
 **Examples:**
 
 1. <French sentence>
@@ -257,8 +284,8 @@ Expected: `68 entries, 68 unique slugs` (taxonomy keys are already compile-check
 
 **Parser rules** (`src/lib/grammar-notes-parser.ts`):
 - Split the document on lines matching `/^## /`; heading text (trimmed) = slug. Ignore any prose before the first `## `.
-- Within a section: `**Summary:**` → remainder of that line (or the following paragraph if the line is empty); text between `**Explanation:**` and `**Examples:**` → `descriptionEn` (trimmed); under `**Examples:**`, each numbered item `N.` starts an example (French), a following line starting `→` is its English translation.
-- Per-note validation → push a message into `problems` and EXCLUDE the note when: summary empty, `descriptionEn` < 50 chars, fewer than 3 complete (fr+en) examples.
+- Within a section: `**Summary:**` → remainder of that line (or the following paragraph if the line is empty); text between `**Explanation:**` and `**Common mistakes:**` (fall back to `**Examples:**` if the mistakes block is missing) → `descriptionEn` (trimmed); under `**Common mistakes:**`, each bullet starting `- ✗ ` opens an item (`wrong` = rest of line), a following line starting `✓ ` is its `right`, a following line wrapped in `(` `)` is its `note` (missing note → `""`); under `**Examples:**`, each numbered item `N.` starts an example (French), a following line starting `→` is its English translation.
+- Per-note validation → push a message into `problems` and EXCLUDE the note when: summary empty, `descriptionEn` < 50 chars, fewer than 2 complete (wrong+right) common mistakes, fewer than 3 complete (fr+en) examples.
 - Slug not found in `GRAMMAR_OUTLINE` → `problems` + exclude. A `**Level:**` disagreeing with the outline is a warning in `problems` but does NOT exclude (outline stays authoritative).
 
 **Import script** (`scripts/import-grammar-points.ts`, env/client setup mirrors `seed-rules.ts`):
@@ -269,7 +296,7 @@ Expected: `68 entries, 68 unique slugs` (taxonomy keys are already compile-check
 
 - [ ] **Step 1:** Write `src/lib/grammar-notes-parser.ts` implementing the rules above.
 - [ ] **Step 2:** Write `scripts/import-grammar-points.ts` + the npm script.
-- [ ] **Step 3:** Hand-write a sample notes file in the scratchpad covering 2 real slugs (e.g. `pronoun-y`, `basic-negation`) + 1 fake slug + 1 note with only 2 examples; run `npm run grammar:import -- <sample>` → expect `inserted 2, invalid 1, unknown-slug 1`; re-run → `skipped-existing 2`.
+- [ ] **Step 3:** Hand-write a sample notes file in the scratchpad covering 2 real slugs (e.g. `pronoun-y`, `basic-negation`, each with a complete Common mistakes block) + 1 fake slug + 1 note with only 2 examples + 1 note with only 1 common mistake; run `npm run grammar:import -- <sample>` → expect `inserted 2, invalid 2, unknown-slug 1`; re-run → `skipped-existing 2`.
 - [ ] **Step 4:** Delete the 2 test rows: one-off `tsx` script or SQL `delete from grammar_points where slug in ('pronoun-y','basic-negation')`. Verify count back to 0.
 - [ ] **Step 5:** `npx tsc --noEmit` + `npx eslint src scripts/import-grammar-points.ts` clean.
 - [ ] **Step 6:** Commit `feat(grammar): notes parser + idempotent import pipeline (grammar:import)`.
@@ -285,7 +312,7 @@ Expected: `68 entries, 68 unique slugs` (taxonomy keys are already compile-check
   - `listGrammarPoints(): Promise<{ points: GrammarPoint[]; verified: number; total: number }>`
   - `getGrammarPointBySlug(slug: string): Promise<GrammarPoint | null>`
   - `getErrorsForSubcategories(subs: string[]): Promise<{ total: number; recent: RecentGrammarError[] }>` with `RecentGrammarError = { id: string; original: string; correction: string; explanationEn: string; createdAt: Date }`
-  - `updateGrammarPoint(id: string, data: { summary: string; descriptionEn: string; examples: { fr: string; en: string }[] }): Promise<void>`
+  - `updateGrammarPoint(id: string, data: { summary: string; descriptionEn: string; commonMistakes: { wrong: string; right: string; note: string }[]; examples: { fr: string; en: string }[] }): Promise<void>`
   - `verifyGrammarPoint(id: string): Promise<void>`
 
 - [ ] **Step 1:** Create the file:
@@ -357,7 +384,12 @@ export async function getErrorsForSubcategories(
 
 export async function updateGrammarPoint(
   id: string,
-  data: { summary: string; descriptionEn: string; examples: { fr: string; en: string }[] },
+  data: {
+    summary: string;
+    descriptionEn: string;
+    commonMistakes: { wrong: string; right: string; note: string }[];
+    examples: { fr: string; en: string }[];
+  },
 ): Promise<void> {
   const [row] = await db
     .update(grammarPoints)
@@ -657,6 +689,7 @@ import { Chip } from "@/components/ui/chip";
 import { Input, Textarea } from "@/components/ui/input";
 
 type Example = { fr: string; en: string };
+type Mistake = { wrong: string; right: string; note: string };
 
 export function PointEditor({ point }: { point: GrammarPoint }) {
   const router = useRouter();
@@ -664,11 +697,13 @@ export function PointEditor({ point }: { point: GrammarPoint }) {
   const [editing, setEditing] = useState(false);
   const [summary, setSummary] = useState(point.summary);
   const [description, setDescription] = useState(point.descriptionEn);
+  const [mistakes, setMistakes] = useState<Mistake[]>(point.commonMistakes);
   const [examples, setExamples] = useState<Example[]>(point.examples);
 
   const startEdit = () => {
     setSummary(point.summary);
     setDescription(point.descriptionEn);
+    setMistakes(point.commonMistakes);
     setExamples(point.examples);
     setEditing(true);
   };
@@ -678,6 +713,7 @@ export function PointEditor({ point }: { point: GrammarPoint }) {
       await updateGrammarPoint(point.id, {
         summary,
         descriptionEn: description,
+        commonMistakes: mistakes.filter((m) => m.wrong.trim() && m.right.trim()),
         examples: examples.filter((ex) => ex.fr.trim()),
       });
       setEditing(false);
@@ -692,6 +728,9 @@ export function PointEditor({ point }: { point: GrammarPoint }) {
 
   const setExample = (i: number, patch: Partial<Example>) =>
     setExamples((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+
+  const setMistake = (i: number, patch: Partial<Mistake>) =>
+    setMistakes((ms) => ms.map((m, j) => (j === i ? { ...m, ...patch } : m)));
 
   return (
     <div className="space-y-6">
@@ -713,6 +752,21 @@ export function PointEditor({ point }: { point: GrammarPoint }) {
           <div className="text-[15px] leading-relaxed">
             <MarkdownLite text={point.descriptionEn} />
           </div>
+          {point.commonMistakes.length > 0 && (
+            <section>
+              <h2 className="font-serif text-lg font-semibold mb-3">Common mistakes</h2>
+              <ul className="space-y-2">
+                {point.commonMistakes.map((m, i) => (
+                  <li key={i} className="rounded-xl border border-border/70 bg-surface px-4 py-3 text-sm">
+                    <span className="font-serif line-through text-danger">{m.wrong}</span>
+                    {" → "}
+                    <span className="font-serif text-success">{m.right}</span>
+                    {m.note && <p className="mt-1 text-xs text-muted-foreground">{m.note}</p>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           <section>
             <h2 className="font-serif text-lg font-semibold mb-3">Examples</h2>
             <ul className="space-y-2">
@@ -752,6 +806,44 @@ export function PointEditor({ point }: { point: GrammarPoint }) {
               className="font-mono text-sm leading-relaxed"
             />
           </label>
+          <div className="space-y-2">
+            <span className="text-xs font-medium text-muted-foreground">Common mistakes</span>
+            {mistakes.map((m, i) => (
+              <div key={i} className="flex gap-2 items-start">
+                <div className="flex-1 space-y-1">
+                  <Input
+                    value={m.wrong}
+                    onChange={(e) => setMistake(i, { wrong: e.target.value })}
+                    placeholder="✗ wrong French"
+                    className="font-serif"
+                  />
+                  <Input
+                    value={m.right}
+                    onChange={(e) => setMistake(i, { right: e.target.value })}
+                    placeholder="✓ corrected French"
+                    className="font-serif"
+                  />
+                  <Input
+                    value={m.note}
+                    onChange={(e) => setMistake(i, { note: e.target.value })}
+                    placeholder="Why (short reason)"
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={() => setMistakes((ms) => ms.filter((_, j) => j !== i))}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              onClick={() => setMistakes((ms) => [...ms, { wrong: "", right: "", note: "" }])}
+            >
+              Add mistake
+            </Button>
+          </div>
           <div className="space-y-2">
             <span className="text-xs font-medium text-muted-foreground">Examples</span>
             {examples.map((ex, i) => (
@@ -801,7 +893,7 @@ export function PointEditor({ point }: { point: GrammarPoint }) {
 
 (Verified against `src/components/ui/button.tsx`: `outline` and `ghost` variants exist; `Textarea` is exported from `src/components/ui/input.tsx`.)
 
-- [ ] **Step 3:** Verify: `npx tsc --noEmit` + `npx eslint src` clean. Dev server walk-through on a trial row: open detail → body + examples render; Edit → change a word → Save → view mode shows the change; Mark as verified → chip flips, list page Draft chip gone; a point whose `taxonomySubcategories` overlap existing errors shows the errors block (pick `passe-compose-vs-imparfait` — `pc_vs_imparfait` almost certainly has rows); a point with no mapping (e.g. `plural-of-nouns`) hides the block; unknown slug → 404.
+- [ ] **Step 3:** Verify: `npx tsc --noEmit` + `npx eslint src` clean. Dev server walk-through on a trial row: open detail → body + Common mistakes (✗ struck-through / ✓ success-coloured) + examples render; Edit → change a word → Save → view mode shows the change; Mark as verified → chip flips, list page Draft chip gone; a point whose `taxonomySubcategories` overlap existing errors shows the errors block (pick `passe-compose-vs-imparfait` — `pc_vs_imparfait` almost certainly has rows); a point with no mapping (e.g. `plural-of-nouns`) hides the block; unknown slug → 404.
 - [ ] **Step 4:** Commit `feat(grammar): detail page with inline edit, verify, linked errors`.
 
 ### Task 8: Full notes import + end-to-end pass + docs

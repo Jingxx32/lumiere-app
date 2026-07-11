@@ -26,6 +26,17 @@ For EACH grammar point listed at the end of this message, output one section in 
 
 <150–350 words. Structure: what the rule is → how to form / use it → common pitfalls for English speakers. Formatting is STRICTLY limited to: plain paragraphs separated by blank lines, **bold** for French forms and key terms, *italic* for emphasis, and bullet lines starting with "- ". NO headings, NO tables, NO numbered lists, NO links, NO code.>
 
+**Common mistakes:**
+
+- ✗ <an incorrect French sentence an English speaker typically produces>
+  ✓ <the corrected French sentence>
+  (<one short reason, max 15 words>)
+- ✗ …
+  ✓ …
+  (…)
+
+(2 to 4 items. Each item is exactly three lines: the "✗" line, the "✓" line, the parenthesised reason. The ✗ sentence must be a realistic learner error — a literal translation from English, a wrong agreement, a wrong word order — never random nonsense. Use exactly the characters "✗" and "✓".)
+
 **Examples:**
 
 1. <French sentence>

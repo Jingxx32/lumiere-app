@@ -19,6 +19,7 @@
 | 讲解语言 | 英文讲解（与现有 `rules.descriptionEn` 一致），法语例句附英文对照 |
 | 覆盖范围 | A2–B1 核心，约 60–80 个知识点；B2 以后增量补 |
 | 校对流程 | 不做批量前置校对；批量起草入库为 draft，应用内「边学边核」，阅读页内嵌编辑 + 标记已核实 |
+| 笔记结构 | **2026-07-11 修订**：在 Explanation 与 Examples 之间加独立 **Common mistakes** 区块（✗ 错误写法 → ✓ 正确写法 + 一句原因，2–4 组，结构化存储）。理由：本产品以错误闭环为核心，✗→✓ 对照与错误卡片（原文划线 → 更正）用同一套视觉语言渲染 |
 | `rules` 表 | 不动，继续服务错误反馈流程；两套体系通过 taxonomy 映射间接相通 |
 
 ## 3. 数据模型
@@ -37,6 +38,7 @@ order_index             integer NOT NULL         -- 组内排序
 summary                 text NOT NULL            -- 一句话概要
 description_en          text NOT NULL            -- 正文，Markdown
 examples                jsonb                    -- { fr: string, en: string }[]
+common_mistakes         jsonb                    -- { wrong: string, right: string, note: string }[]（2026-07-11 加）
 taxonomy_subcategories  jsonb                    -- string[]，映射 ERROR_TAXONOMY 叶子子类键（多对一，可为空数组）
 status                  text NOT NULL            -- 'draft' | 'verified'，默认 'draft'
 verified_at             timestamptz NULL
@@ -56,7 +58,7 @@ created_at / updated_at timestamptz NOT NULL
 不变的要点：
 
 - 幂等：按 slug 跳过库里已有条目，可分批多次导入
-- 以 `status = 'draft'` 入库；name/level/category/taxonomy 映射一律以大纲文件为准（笔记只提供 summary / 正文 / 例句）
+- 以 `status = 'draft'` 入库；name/level/category/taxonomy 映射一律以大纲文件为准（笔记只提供 summary / 正文 / common mistakes / 例句）
 - 单条解析失败报告并跳过，不中断整体
 
 ## 5. 页面与交互
@@ -71,6 +73,7 @@ created_at / updated_at timestamptz NOT NULL
 ### 5.2 `/grammar/[slug]` 详情页
 
 - 标题、等级、正文（渲染 Markdown）、例句列表（法语 `font-serif`，英文对照）
+- **Common mistakes** 区块（正文与例句之间）：✗ 错误写法（划线、danger 色）→ ✓ 正确写法（success 色）+ 一句原因——与错误卡片同构的视觉语言
 - **"Your errors on this point"** 区块：按 `taxonomy_subcategories` 查 `errors` 表（`subcategory IN (...)`），显示错误总数 + 最近几条摘要
 - **编辑模式**：点 Edit 后正文 / 例句 / 概要变为可编辑，保存走 server action
 - **"Mark as verified"** 独立按钮：置 `status = 'verified'` + `verified_at`；列表页未核实标记随之消失

@@ -634,3 +634,36 @@ export const speakingTurns = pgTable("speaking_turns", {
 });
 
 export type SpeakingTurn = typeof speakingTurns.$inferSelect;
+
+/* ------------------------------------------------------------------ */
+/*  grammar_points — A2–B1 grammar reference library                   */
+/*  Outline (slug/name/level/category/mapping) lives in                */
+/*  src/lib/grammar-outline.ts; AI drafts content as status='draft',   */
+/*  the user verifies while reading.                                   */
+/* ------------------------------------------------------------------ */
+
+export const grammarPoints = pgTable(
+  "grammar_points",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Stable key from the outline; used for URLs and idempotent generation. */
+    slug: text("slug").notNull().unique(),
+    name: text("name").notNull(),
+    level: text("level").notNull(), // 'A2' | 'B1'
+    category: text("category").notNull(), // pedagogical group, see GRAMMAR_CATEGORIES
+    orderIndex: integer("order_index").notNull(),
+    summary: text("summary").notNull(),
+    /** Markdown-lite: paragraphs, **bold**, *italic*, "- " bullets only. */
+    descriptionEn: text("description_en").notNull(),
+    examples: jsonb("examples").$type<{ fr: string; en: string }[]>().notNull(),
+    /** ERROR_TAXONOMY leaf keys this point maps to (may be empty). */
+    taxonomySubcategories: jsonb("taxonomy_subcategories").$type<string[]>().notNull(),
+    status: text("status").notNull().default("draft"), // 'draft' | 'verified'
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("grammar_points_category_order_idx").on(t.category, t.orderIndex)],
+);
+
+export type GrammarPoint = typeof grammarPoints.$inferSelect;

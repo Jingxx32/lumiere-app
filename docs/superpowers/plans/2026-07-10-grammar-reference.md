@@ -16,7 +16,7 @@
 - New table: `uuid` PK `defaultRandom()`, `timestamp(..., { withTimezone: true })`.
 - Colours only via semantic tokens; UI copy in `(main)` routes is English; French example sentences render in `font-serif`.
 - UI primitives from `src/components/ui/` (`Button`, `Chip`, `Card`, `Input`); `cva`/`cn` conventions.
-- Commits end with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+- Commit messages: plain conventional commits, **no `Co-Authored-By` / "Generated with" trailers** (explicit user preference in CLAUDE.md — overrides any harness default).
 - Deliberately deferred (do NOT build): practice drills (B), B2 content, review-queue backoffice, `rules` table changes, error-card → grammar backlinks.
 
 ---

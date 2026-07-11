@@ -15,7 +15,7 @@
 |---|---|
 | 模块形态 | A（参考库）为主，B（配套练习）以后再加，本期只留挂载点 |
 | 知识点体系 | 独立语法大纲（非错误分类法骨架），通过映射字段与分类法相通 |
-| 内容来源 | 方法 C：CEFR 官方 A2/B1 语法清单搭骨架 + AI 起草 + 人工校对（用户无自有教材 PDF） |
+| 内容来源 | 方法 C：CEFR 官方 A2/B1 语法清单搭骨架 + AI 起草 + 人工校对（用户无自有教材 PDF）。**2026-07-11 修订：起草在外部 AI 工具完成（不使用用户的 OpenAI API），经 markdown 笔记导入** |
 | 讲解语言 | 英文讲解（与现有 `rules.descriptionEn` 一致），法语例句附英文对照 |
 | 覆盖范围 | A2–B1 核心，约 60–80 个知识点；B2 以后增量补 |
 | 校对流程 | 不做批量前置校对；批量起草入库为 draft，应用内「边学边核」，阅读页内嵌编辑 + 标记已核实 |
@@ -51,13 +51,13 @@ created_at / updated_at timestamptz NOT NULL
 
 ## 4. 内容生产管线
 
-`scripts/generate-grammar-points.ts`（仿 `seed-rules.ts` 模式），npm script `grammar:generate`：
+> **2026-07-11 修订**：应用户要求，**不使用用户的 OpenAI API** 生成内容。原「脚本调 OpenAI 起草」改为：Claude 提供结构化 prompt（`docs/grammar-notes-prompt.md`，含 8 个批次的知识点清单），用户在任意外部 AI 工具中生成语法笔记，存入 Notion 或 Obsidian；`scripts/import-grammar-points.ts`（npm script `grammar:import`）解析笔记 markdown 并入库。
 
-- 遍历大纲，跳过库里已有的 slug（幂等、可断点重跑）
-- 对缺失项调 OpenAI（结构化输出 + Zod 校验）生成 `summary / descriptionEn / examples`，以 `status = 'draft'` 入库
-- 单条失败不中断整体，下次重跑补齐
-- 模型：新增可选环境变量 `OPENAI_MODEL_GRAMMAR`，默认 `gpt-4o`
-- AI 生成内容经用户校对，无版权问题，入库数据可正常存在（大纲与脚本进 git；生成内容在数据库中）
+不变的要点：
+
+- 幂等：按 slug 跳过库里已有条目，可分批多次导入
+- 以 `status = 'draft'` 入库；name/level/category/taxonomy 映射一律以大纲文件为准（笔记只提供 summary / 正文 / 例句）
+- 单条解析失败报告并跳过，不中断整体
 
 ## 5. 页面与交互
 

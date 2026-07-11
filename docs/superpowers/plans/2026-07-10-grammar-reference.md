@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A2–B1 grammar reference library (~68 points): curated outline in git → AI-drafted content in DB as `draft` → user verifies point-by-point while reading (`/grammar` list + `/grammar/[slug]` detail with inline edit + "Mark as verified").
+**Goal:** A2–B1 grammar reference library (~68 points): curated outline in git → content drafted by the user in an external AI tool (prompt: `docs/grammar-notes-prompt.md`), imported into DB as `draft` → user verifies point-by-point while reading (`/grammar` list + `/grammar/[slug]` detail with inline edit + "Mark as verified").
 
-**Architecture:** Spec: `docs/superpowers/specs/2026-07-10-grammar-reference-design.md`. New `grammar_points` table (uuid PK + timestamptz convention); outline file `src/lib/grammar-outline.ts` is the single authoritative source of the point list; generation script (mirrors `seed-rules.ts`) fills missing slugs via OpenAI structured outputs; pages follow the existing "async server component → `lib/actions` server actions → Drizzle" flow, no API routes.
+**Architecture:** Spec: `docs/superpowers/specs/2026-07-10-grammar-reference-design.md` (see its 2026-07-11 revision note). New `grammar_points` table (uuid PK + timestamptz convention); outline file `src/lib/grammar-outline.ts` is the single authoritative source of the point list; an import script (mirrors `seed-rules.ts`) parses the user's markdown notes and fills missing slugs — **no OpenAI API calls anywhere in this plan**; pages follow the existing "async server component → `lib/actions` server actions → Drizzle" flow, no API routes.
 
-**Tech Stack:** Next.js 16 App Router, React 19, Drizzle + postgres.js, Tailwind v4 semantic tokens, OpenAI structured outputs (`zodResponseFormat`), lucide-react.
+**Tech Stack:** Next.js 16 App Router, React 19, Drizzle + postgres.js, Tailwind v4 semantic tokens, lucide-react.
 
 ## Global Constraints
 
@@ -222,153 +222,57 @@ Expected: `68 entries, 68 unique slugs` (taxonomy keys are already compile-check
 - [ ] **Step 3:** `npx tsc --noEmit` clean (this is what validates every taxonomy key).
 - [ ] **Step 4:** Commit `feat(grammar): curated A2–B1 outline (68 points, taxonomy-mapped)`.
 
-### Task 3: AI drafting module + generation script
+### Task 3: Notes import pipeline (external AI content — no OpenAI spend)
+
+> **2026-07-11 revision:** the OpenAI drafting module is dropped at the user's request (do NOT call the user's OpenAI API for content generation). Instead the user generates notes with an external AI chatbot using `docs/grammar-notes-prompt.md`, saves them as markdown (Obsidian files or Notion pages), and this task's importer parses them into the DB.
 
 **Files:**
-- Modify: `src/lib/ai/client.ts` — add to `MODELS`: `grammar: process.env.OPENAI_MODEL_GRAMMAR ?? "gpt-4o",`
-- Create: `src/lib/ai/grammar-draft.ts`
-- Create: `scripts/generate-grammar-points.ts`
-- Modify: `package.json` — add script `"grammar:generate": "tsx scripts/generate-grammar-points.ts"`
+- Create: `src/lib/grammar-notes-parser.ts` (pure parser, no DB, no I/O)
+- Create: `scripts/import-grammar-points.ts`
+- Modify: `package.json` — add script `"grammar:import": "tsx scripts/import-grammar-points.ts"`
 
 **Interfaces:**
-- Consumes: `GRAMMAR_OUTLINE`, `GrammarOutlineEntry` (Task 2); `grammarPoints` (Task 1)
-- Produces: `draftGrammarPoint(entry: GrammarOutlineEntry): Promise<GrammarDraft>` where `GrammarDraft = { summary: string; descriptionEn: string; examples: { fr: string; en: string }[] }`
+- Consumes: `GRAMMAR_OUTLINE` (Task 2); `grammarPoints` (Task 1)
+- Produces: `parseGrammarNotes(markdown: string): { notes: ParsedNote[]; problems: string[] }` with `ParsedNote = { slug: string; summary: string; descriptionEn: string; examples: { fr: string; en: string }[] }`
 
-- [ ] **Step 1:** Create `src/lib/ai/grammar-draft.ts` (mirrors `enrich.ts` conventions — plain server module, NOT `"use server"`):
+**Note format** (single source of truth: `docs/grammar-notes-prompt.md` — parser and prompt must stay in sync):
 
-```ts
-// Plain server module (not a "use server" Server Action file): called from
-// scripts/generate-grammar-points.ts only.
+```markdown
+## <slug>
 
-import { z } from "zod";
-import { zodResponseFormat } from "openai/helpers/zod";
-import { openai, MODELS } from "./client";
-import type { GrammarOutlineEntry } from "@/lib/grammar-outline";
+**Level:** A2
 
-const GrammarDraftSchema = z.object({
-  /** One sentence, ≤ 25 words, no markdown. */
-  summary: z.string(),
-  /** Markdown-lite body (see prompt constraints). */
-  description_en: z.string(),
-  examples: z.array(z.object({ fr: z.string(), en: z.string() })),
-});
+**Summary:** <one sentence>
 
-export type GrammarDraft = {
-  summary: string;
-  descriptionEn: string;
-  examples: { fr: string; en: string }[];
-};
+**Explanation:**
 
-const SYSTEM_PROMPT = `You are an experienced FLE (français langue étrangère) teacher writing a grammar reference for an English-speaking learner at A2–B1 level.
+<markdown-lite: paragraphs, **bold**, *italic*, "- " bullets>
 
-For the given grammar point, write:
-1. "summary" — one plain sentence (≤ 25 words) saying what the point covers. No markdown.
-2. "description_en" — the explanation body, 150–350 words. Structure: what the rule is → how to form/use it → common pitfalls for learners (especially anglophone interference). Formatting is STRICTLY limited to: plain paragraphs separated by blank lines, **bold** for French forms and key terms, *italic* for emphasis, and bullet lines starting with "- ". NO headings, NO tables, NO numbered lists, NO links, NO inline code.
-3. "examples" — 4 to 8 French sentences with natural English translations. Cover the main uses AND at least one contrast or negative/edge case. Keep vocabulary at A2–B1.
+**Examples:**
 
-Accuracy over completeness: state rules the standard references agree on; for genuinely contested details, say "usually" rather than inventing a hard rule.`;
-
-export async function draftGrammarPoint(entry: GrammarOutlineEntry): Promise<GrammarDraft> {
-  const completion = await openai.chat.completions.parse({
-    model: MODELS.grammar,
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Grammar point: ${entry.name}\nCEFR level: ${entry.level}\nCategory: ${entry.category}`,
-      },
-    ],
-    response_format: zodResponseFormat(GrammarDraftSchema, "grammar_draft"),
-  });
-
-  const parsed = completion.choices[0]?.message.parsed;
-  if (!parsed) throw new Error(`No parsed draft for ${entry.slug}`);
-  return {
-    summary: parsed.summary,
-    descriptionEn: parsed.description_en,
-    examples: parsed.examples,
-  };
-}
+1. <French sentence>
+   → <English translation>
+2. …
 ```
 
-- [ ] **Step 2:** Create `scripts/generate-grammar-points.ts` (mirrors `seed-rules.ts` env/client setup):
+**Parser rules** (`src/lib/grammar-notes-parser.ts`):
+- Split the document on lines matching `/^## /`; heading text (trimmed) = slug. Ignore any prose before the first `## `.
+- Within a section: `**Summary:**` → remainder of that line (or the following paragraph if the line is empty); text between `**Explanation:**` and `**Examples:**` → `descriptionEn` (trimmed); under `**Examples:**`, each numbered item `N.` starts an example (French), a following line starting `→` is its English translation.
+- Per-note validation → push a message into `problems` and EXCLUDE the note when: summary empty, `descriptionEn` < 50 chars, fewer than 3 complete (fr+en) examples.
+- Slug not found in `GRAMMAR_OUTLINE` → `problems` + exclude. A `**Level:**` disagreeing with the outline is a warning in `problems` but does NOT exclude (outline stays authoritative).
 
-```ts
-/**
- * Draft grammar reference content for every outline entry not yet in the DB.
- * Idempotent — skips slugs that already exist, so it is safe to re-run after
- * partial failures. Inserted rows have status='draft' (verify in-app).
- *
- *   npm run grammar:generate            # all missing points
- *   npm run grammar:generate -- --limit 3   # trial run
- */
-import { config } from "dotenv";
-config({ path: ".env.local" });
-config({ path: ".env" });
+**Import script** (`scripts/import-grammar-points.ts`, env/client setup mirrors `seed-rules.ts`):
+- Args: one or more file or directory paths (directories: read every `*.md` inside, non-recursive): `npm run grammar:import -- data/grammar-notes/`
+- Idempotent: skip slugs already in DB.
+- Insert with `status: 'draft'` and `name/level/category/orderIndex/taxonomySubcategories` taken from `GRAMMAR_OUTLINE` (never from the note).
+- Print summary: `inserted N, skipped-existing N, invalid N, unknown-slug N` + each `problems` line.
 
-import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
-import { inArray } from "drizzle-orm";
-import * as schema from "../src/lib/db/schema";
-import { grammarPoints } from "../src/lib/db/schema";
-import { GRAMMAR_OUTLINE } from "../src/lib/grammar-outline";
-import { draftGrammarPoint } from "../src/lib/ai/grammar-draft";
-
-async function main() {
-  const limitArg = process.argv.indexOf("--limit");
-  const limit = limitArg > -1 ? Number(process.argv[limitArg + 1]) : Infinity;
-
-  const client = postgres(process.env.DATABASE_URL!, { max: 1 });
-  const db = drizzle(client, { schema });
-
-  const existing = await db
-    .select({ slug: grammarPoints.slug })
-    .from(grammarPoints)
-    .where(inArray(grammarPoints.slug, GRAMMAR_OUTLINE.map((o) => o.slug)));
-  const existingSlugs = new Set(existing.map((r) => r.slug));
-
-  const missing = GRAMMAR_OUTLINE.filter((o) => !existingSlugs.has(o.slug)).slice(0, limit === Infinity ? undefined : limit);
-  console.log(`${GRAMMAR_OUTLINE.length} outline entries — ${existingSlugs.size} in DB, drafting ${missing.length}.`);
-
-  let ok = 0;
-  let failed = 0;
-  for (const entry of missing) {
-    try {
-      const draft = await draftGrammarPoint(entry);
-      await db.insert(grammarPoints).values({
-        slug: entry.slug,
-        name: entry.name,
-        level: entry.level,
-        category: entry.category,
-        orderIndex: entry.orderIndex,
-        summary: draft.summary,
-        descriptionEn: draft.descriptionEn,
-        examples: draft.examples,
-        taxonomySubcategories: entry.taxonomySubcategories,
-        status: "draft",
-      });
-      ok += 1;
-      console.log(`  ✓ ${entry.slug}`);
-    } catch (err) {
-      failed += 1;
-      console.error(`  ✗ ${entry.slug}: ${err instanceof Error ? err.message : err}`);
-    }
-  }
-
-  console.log(`✓ Done — drafted ${ok}, failed ${failed} (re-run to retry failures).`);
-  await client.end();
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
-```
-
-- [ ] **Step 3:** Add `MODELS.grammar` to `src/lib/ai/client.ts` and the `grammar:generate` script to `package.json` as listed above.
-- [ ] **Step 4:** `npx tsc --noEmit` clean.
-- [ ] **Step 5:** Trial run: `npm run grammar:generate -- --limit 3` → `✓` for 3 slugs; re-run the same command → `drafting 3` again but for the NEXT 3 missing (first 3 skipped as existing). Spot-check one row in `npm run db:studio`: summary/description/examples populated, `status = 'draft'`.
-- [ ] **Step 6:** Commit `feat(grammar): AI drafting pipeline (grammar:generate, idempotent)`.
+- [ ] **Step 1:** Write `src/lib/grammar-notes-parser.ts` implementing the rules above.
+- [ ] **Step 2:** Write `scripts/import-grammar-points.ts` + the npm script.
+- [ ] **Step 3:** Hand-write a sample notes file in the scratchpad covering 2 real slugs (e.g. `pronoun-y`, `basic-negation`) + 1 fake slug + 1 note with only 2 examples; run `npm run grammar:import -- <sample>` → expect `inserted 2, invalid 1, unknown-slug 1`; re-run → `skipped-existing 2`.
+- [ ] **Step 4:** Delete the 2 test rows: one-off `tsx` script or SQL `delete from grammar_points where slug in ('pronoun-y','basic-negation')`. Verify count back to 0.
+- [ ] **Step 5:** `npx tsc --noEmit` + `npx eslint src scripts/import-grammar-points.ts` clean.
+- [ ] **Step 6:** Commit `feat(grammar): notes parser + idempotent import pipeline (grammar:import)`.
 
 ### Task 4: Server actions `src/lib/actions/grammar.ts`
 
@@ -641,7 +545,7 @@ export function GrammarBrowser({ points }: { points: GrammarPoint[] }) {
       {grouped.length === 0 && (
         <p className="text-sm text-muted-foreground">
           {points.length === 0
-            ? "No grammar points yet — run `npm run grammar:generate` to draft the library."
+            ? "No grammar points yet — import your notes with `npm run grammar:import`."
             : "No points match your search."}
         </p>
       )}
@@ -900,12 +804,14 @@ export function PointEditor({ point }: { point: GrammarPoint }) {
 - [ ] **Step 3:** Verify: `npx tsc --noEmit` + `npx eslint src` clean. Dev server walk-through on a trial row: open detail → body + examples render; Edit → change a word → Save → view mode shows the change; Mark as verified → chip flips, list page Draft chip gone; a point whose `taxonomySubcategories` overlap existing errors shows the errors block (pick `passe-compose-vs-imparfait` — `pc_vs_imparfait` almost certainly has rows); a point with no mapping (e.g. `plural-of-nouns`) hides the block; unknown slug → 404.
 - [ ] **Step 4:** Commit `feat(grammar): detail page with inline edit, verify, linked errors`.
 
-### Task 8: Full generation run + end-to-end pass + docs
+### Task 8: Full notes import + end-to-end pass + docs
+
+> **Gated on the user:** runs only after the user has generated notes for all 68 points with `docs/grammar-notes-prompt.md` and handed them over (markdown files, an Obsidian folder, or Notion pages to fetch). Tasks 4–7 can ship before this.
 
 **Files:**
-- Modify: `CLAUDE.md` — Commands block: add `npm run grammar:generate  # AI-draft grammar reference content for missing outline entries`; Environment variables block: add `OPENAI_MODEL_GRAMMAR   # grammar drafts; defaults to gpt-4o`; Database section: table count 23→24, add `grammar_points` to the group list (its own bullet: "Grammar reference: `grammar_points` (outline in `src/lib/grammar-outline.ts`)"); update the "Current status" sentence to mention the grammar reference module.
+- Modify: `CLAUDE.md` — Commands block: add `npm run grammar:import  # Import grammar-reference notes (markdown) for missing outline entries`; Database section: table count 23→24, add `grammar_points` to the group list (its own bullet: "Grammar reference: `grammar_points` (outline in `src/lib/grammar-outline.ts`)"); update the "Current status" sentence to mention the grammar reference module.
 
-- [ ] **Step 1:** `npm run grammar:generate` (full run, ~65 remaining points, several minutes). Expected: `✓ Done — drafted N, failed 0`; if failures, re-run until 0.
+- [ ] **Step 1:** Collect the user's notes into `data/grammar-notes/` (already gitignored; copy `.md` files there, or export Notion pages to markdown first). Run `npm run grammar:import -- data/grammar-notes/` until all 68 are in. Report every `invalid` / `unknown-slug` problem to the user for a fix-and-rerun round (the script is idempotent).
 - [ ] **Step 2:** Sanity queries: total rows = 68; no empty descriptions:
 
 Run: `npx tsx -e "import('dotenv').then(d=>{d.config({path:'.env.local'});d.config();import('postgres').then(async({default:pg})=>{const s=pg(process.env.DATABASE_URL);const r=await s\`select count(*)::int as n, count(*) filter (where length(description_en)<50)::int as thin from grammar_points\`;console.log(r[0]);await s.end()})})"`
@@ -914,7 +820,7 @@ Expected: `{ n: 68, thin: 0 }`
 - [ ] **Step 3:** Browser pass: `/grammar` shows 8 groups / 68 points / "0/68 verified" (or trial-verified count); read 2–3 points end-to-end (markdown blocks, bold, bullets, examples); verify one → progress counter increments.
 - [ ] **Step 4:** Update `CLAUDE.md` per above.
 - [ ] **Step 5:** Final gates: `npx tsc --noEmit`, `npx eslint src`, `npm run build` — all clean.
-- [ ] **Step 6:** Commit `feat(grammar): full library generation + docs`. Merge decision via superpowers:finishing-a-development-branch.
+- [ ] **Step 6:** Commit `feat(grammar): full library import + docs`. Merge decision via superpowers:finishing-a-development-branch.
 
 ---
 

@@ -102,7 +102,7 @@ table tcf_sets
   test_number   int            // 1–42
   skill         tcf_skill      // 本次固定 listening
   title         text           // 如 "Compréhension orale test 1"
-  source        text           // 备考资料来源标签
+  source        text           // 来源标签，如 "TCF Canada — local practice material"
   created_at    timestamptz default now()
   unique(test_number, skill)
 

@@ -28,6 +28,9 @@ if (!PDF_DIR) {
   );
 }
 
+/** Stored on every imported set, so rows can be traced back to their origin. */
+const SOURCE = "TCF Canada — local practice material";
+
 /** Extract test number from filename, e.g. "Compréhension orale test 3 (Member) - 题库.pdf" → 3 */
 function extractTestNumber(filename: string): number | null {
   // Handles: "test 1 (Member)", "test 10 (Member)", "test 10 Member"
@@ -75,7 +78,7 @@ async function importTest(
         testNumber,
         skill: "listening",
         title,
-        source: "备考资料来源标签",
+        source: SOURCE,
       })
       .returning();
     setId = inserted.id;

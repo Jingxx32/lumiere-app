@@ -21,8 +21,12 @@ import { PDFParse } from "pdf-parse";
 import { tcfSets, tcfQuestions } from "../src/lib/db/schema";
 import { parseQuestions } from "../src/lib/tcf/parse";
 
-const PDF_DIR =
-  "<TCF_LISTENING_DIR>";
+const PDF_DIR = process.env.TCF_LISTENING_DIR ?? "";
+if (!PDF_DIR) {
+  throw new Error(
+    "TCF_LISTENING_DIR is not set — point it at your local listening PDF + audio folder.",
+  );
+}
 
 /** Extract test number from filename, e.g. "Compréhension orale test 3 (Member) - 题库.pdf" → 3 */
 function extractTestNumber(filename: string): number | null {

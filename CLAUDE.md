@@ -77,7 +77,7 @@ Do not add categories without considering AI labelling accuracy and dashboard co
 
 ### Planned work (don't implement prematurely)
 
-Specs and plans live under `docs/superpowers/{specs,plans}/`; product direction in `docs/product-audit-*.md` / `docs/audit-*.md`. Current queue: TCF error loop steps 2–4 (AI skill-tagging, smart re-drill queue, weak-points panel + exam review page), lightweight review queue (Leitner), TCF EE writing mode (gated on writing habit recovery).
+Specs and plans live under `docs/superpowers/{specs,plans}/`; product direction in `docs/audit-*.md`. Current queue: TCF error loop steps 2–4 (AI skill-tagging, smart re-drill queue, weak-points panel + exam review page), lightweight review queue (Leitner), TCF EE writing mode (gated on writing habit recovery).
 
 ## Environment variables
 
@@ -90,4 +90,7 @@ OPENAI_MODEL_ENRICH   # vocab enrich; defaults to gpt-4o-mini
 DATABASE_URL          # Required — PostgreSQL connection string (e.g. postgres://user:pass@host/db)
 AZURE_SPEECH_KEY      # Speaking only — Azure Cognitive Services Speech key
 AZURE_SPEECH_REGION   # Speaking only — e.g. canadacentral
+TCF_LISTENING_DIR     # TCF import only — local folder of listening PDFs + audio
+TCF_READING_DIR       # TCF import only — local folder of reading questions
+TCF_SAMPLE_PDF        # TCF parser debug scripts only — one local PDF
 ```

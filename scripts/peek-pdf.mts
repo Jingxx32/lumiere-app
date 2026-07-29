@@ -1,6 +1,8 @@
 import { PDFParse } from 'pdf-parse';
 import { readFileSync } from 'fs';
-const buf = readFileSync('<TCF_LISTENING_DIR>/Compréhension orale test 1 (Member) - 题库.pdf');
+const PDF_PATH = process.env.TCF_SAMPLE_PDF;
+if (!PDF_PATH) throw new Error('TCF_SAMPLE_PDF is not set — point it at one local listening PDF.');
+const buf = readFileSync(PDF_PATH);
 const parser = new PDFParse({ data: new Uint8Array(buf) });
 const result = await parser.getText();
 const lines = result.text.split('\n');

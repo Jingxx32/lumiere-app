@@ -28,9 +28,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env.local")
 load_dotenv(PROJECT_ROOT / ".env")
 
-PDF_DIR = Path(
-    "<TCF_LISTENING_DIR>"
-)
+_PDF_DIR = os.environ.get("TCF_LISTENING_DIR")
+if not _PDF_DIR:
+    sys.exit("TCF_LISTENING_DIR is not set — point it at your local listening PDF + audio folder.")
+PDF_DIR = Path(_PDF_DIR)
 OUTPUT_BASE = PROJECT_ROOT / "public" / "media" / "tcf"
 MIN_DIM = 500  # px — anything smaller is a logo / decorative thumbnail
 

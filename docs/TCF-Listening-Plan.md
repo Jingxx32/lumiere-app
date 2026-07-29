@@ -11,7 +11,7 @@
 
 **只做这些：**
 - 仅 **听力 (Compréhension orale)**，阅读以后再说。
-- 文本只读 **本地备考 PDF**（自带 题/选项/答案/法文原文/中文翻译解析）。
+- 文本只读本地备考 PDF（自带 题/选项/答案/法文原文/中文翻译解析）。
 - 先**提取入库**，**暂不生成语音 (TTS)**。
 - 先做一个能 **在页面上逐题检查** 的界面；我（用户）确认页面没问题后，再做语音。
 
@@ -46,7 +46,7 @@
 
 ## 2. 数据来源与格式 (Data source)
 
-**来源文件**：`<TCF_LISTENING_DIR>/test-N.pdf`（约 42 套，每套 1 个 PDF + 1 个整套 mp3）。
+**来源文件**：本地备考资料目录（由 `TCF_LISTENING_DIR` 指定，不入库），每套 1 个 PDF + 1 个整套 mp3，约 42 套。
 
 **PDF 是可选中文字**（非扫描，~777 字/页），用项目现有 `pdf-parse` 即可抽取（同 `src/lib/pdf/extract.ts`）。
 
@@ -102,7 +102,7 @@ table tcf_sets
   test_number   int            // 1–42
   skill         tcf_skill      // 本次固定 listening
   title         text           // 如 "Compréhension orale test 1"
-  source        text           // "备考资料来源标签"
+  source        text           // 备考资料来源标签
   created_at    timestamptz default now()
   unique(test_number, skill)
 

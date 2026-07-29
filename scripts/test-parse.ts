@@ -2,7 +2,8 @@ import { PDFParse } from 'pdf-parse';
 import { readFileSync } from 'fs';
 import { parseQuestions } from '../src/lib/tcf/parse';
 
-const PDF_PATH = '<TCF_LISTENING_DIR>/Compréhension orale test 1 (Member) - 题库.pdf';
+const PDF_PATH = process.env.TCF_SAMPLE_PDF ?? '';
+if (!PDF_PATH) throw new Error('TCF_SAMPLE_PDF is not set — point it at one local listening PDF.');
 
 async function main() {
   const buf = readFileSync(PDF_PATH);

@@ -29,13 +29,15 @@ import { tcfSets, tcfQuestions } from "../src/lib/db/schema";
 import { parseMhtml, parseReadingMhtml } from "../src/lib/tcf/parse-reading-mhtml";
 import { parseReadingPdf } from "../src/lib/tcf/parse-reading-pdf";
 
-const READING_DIR =
-  "<TCF_READING_DIR>";
-const MHTML_DIR = path.join(
-  READING_DIR,
-  "mhtml",
-);
-const PDF_TEST40 = path.join(READING_DIR, "test-40.pdf");
+const READING_DIR = process.env.TCF_READING_DIR ?? "";
+if (!READING_DIR) {
+  throw new Error(
+    "TCF_READING_DIR is not set — point it at your local reading question folder.",
+  );
+}
+/** Subfolder holding the .mhtml exports — override if your copy is laid out differently. */
+const MHTML_DIR = path.join(READING_DIR, process.env.TCF_READING_MHTML_SUBDIR ?? "mhtml");
+const PDF_TEST40 = path.join(READING_DIR, process.env.TCF_READING_PDF40 ?? "test-40.pdf");
 const MEDIA_BASE = path.join(process.cwd(), "public", "media", "tcf", "reading");
 const SOURCE = "RÉUSSIR TCF CANADA";
 const INSTRUCTION = "Lisez le document et choisissez la bonne réponse.";

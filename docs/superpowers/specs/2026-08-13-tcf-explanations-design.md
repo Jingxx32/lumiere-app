@@ -5,7 +5,7 @@
 
 ## 1. 概述
 
-刷 TCF 题时点「Afficher réponse」，除了高亮正确选项，还要看到一篇**中文讲解 + 全题英文翻译**。讲解由用户与 Claude 在对话里逐题产出，写成 markdown 文件存进本仓库，再由脚本同步进 `tcf_questions.explanation`，前端渲染。
+刷 TCF 题时点「Afficher réponse」，除了高亮正确选项，还要看到一篇**中文讲解 + 全题英文翻译**。讲解由用户与 Claude 在对话里逐题产出，写成 markdown 文件存在**仓库外的私有仓库**（见 §4.1），再由脚本同步进 `tcf_questions.explanation`，前端渲染。
 
 现状缺口：`tcf_questions.explanation` 与 `translation_en` 两个字段建表时就留好了，但 3159 道题**全为 null**——解析器（`src/lib/tcf/parse.ts`）一律写 null，前端也从未渲染过这两个字段。
 
@@ -125,7 +125,7 @@ frontmatter 供脚本定位，不进数据库、不显示。frontmatter 之后�
 用户：今天我们来精讲TCF题目          ← 闸门打开，本次会话有效
 用户：T1 Q5
 Claude：从库里取题干/原文/选项/答案 → 按 §4.3 讲解
-        → 写 data/tcf-explanations/CE-T1-Q5.md
+        → 写 $TCF_EXPLANATIONS_DIR/CE-T1-Q5.md
         → 跑 npm run tcf:explain-sync
 ```
 
@@ -136,7 +136,7 @@ Claude：从库里取题干/原文/选项/答案 → 按 §4.3 讲解
 - 选项级钉一句话的结构化展示
 - 词汇 / 语法点抽取入 `vocabulary_lookups` / `grammar_points`
 - 批量回填历史题
-- 改动 french-wiki 与 sundew 两个仓库
+- 改动 sundew，或改动 french-wiki 的口语闪卡流水线（`raw/` `wiki/` `learning/`）。french-wiki 现作为讲解文件的私有存放处（`tcf/explanations/`，见 §4.1），两条线除此之外互不相干
 
 ## 9. 风险与取舍
 

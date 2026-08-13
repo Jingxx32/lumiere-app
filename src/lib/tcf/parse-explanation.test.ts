@@ -95,3 +95,70 @@ test("expectedFileName builds the CE/CO convention", () => {
   assert.equal(expectedFileName({ test: 1, skill: "reading", question: 5 }), "CE-T1-Q5.md");
   assert.equal(expectedFileName({ test: 13, skill: "listening", question: 30 }), "CO-T13-Q30.md");
 });
+
+test("keeps a subheading nested inside 全文翻译 instead of treating it as the section end", () => {
+  const raw = `---
+test: 1
+skill: reading
+question: 5
+written: 2026-08-13
+---
+
+## 全文翻译
+
+### Question
+
+What is Elsa's nationality?
+
+### Options
+
+A. Canadian · B. Spanish
+
+## 题干
+
+Quelle est la nationalité d'Elsa ?
+`;
+  const p = parseExplanationFile(raw);
+  assert.ok(p.translationEn !== null);
+  assert.ok(p.translationEn.includes("### Question"));
+  assert.ok(p.translationEn.includes("What is Elsa's nationality?"));
+  assert.ok(p.translationEn.includes("### Options"));
+  assert.ok(p.translationEn.includes("A. Canadian"));
+  assert.ok(!p.translationEn.includes("题干"));
+});
+
+test("tolerates a leading blank line before the frontmatter", () => {
+  const raw = `\n---\ntest: 1\nskill: reading\nquestion: 5\nwritten: 2026-08-13\n---\n\n## 全文翻译\n\nSome text.\n`;
+  const p = parseExplanationFile(raw);
+  assert.equal(p.test, 1);
+  assert.equal(p.skill, "reading");
+  assert.equal(p.question, 5);
+});
+
+test("strips a single pair of matching quotes from frontmatter scalars", () => {
+  const raw = `---\ntest: "1"\nskill: "reading"\nquestion: '5'\nwritten: 2026-08-13\n---\n\n## 题干\nfoo\n`;
+  const p = parseExplanationFile(raw);
+  assert.equal(p.test, 1);
+  assert.equal(p.skill, "reading");
+  assert.equal(p.question, 5);
+});
+
+test("matches the translation heading exactly, not as a substring", () => {
+  const raw = `---
+test: 1
+skill: reading
+question: 5
+written: 2026-08-13
+---
+
+## 关于全文翻译对照表的说明
+
+This is not the translation section.
+
+## 题干
+
+foo
+`;
+  const p = parseExplanationFile(raw);
+  assert.equal(p.translationEn, null);
+});

@@ -48,19 +48,43 @@ function readNumber(fm: Record<string, string>, key: string): number {
   return n;
 }
 
-/** Content of the first `## <heading>` section, up to the next heading of any level. */
+/**
+ * Content of the first `## <heading>` section, up to the next heading of the
+ * same or higher level (fewer or equal `#` marks). Deeper headings (more `#`
+ * marks) are nested content and stay in the returned text.
+ */
 function sectionBody(body: string, heading: string): string | null {
   const lines = body.split(/\r?\n/);
-  const start = lines.findIndex((l) => /^#{1,6}\s/.test(l) && l.includes(heading));
+  const headingLine = /^(#{1,6})\s+(.*)$/;
+  const start = lines.findIndex((l) => {
+    const m = headingLine.exec(l);
+    return m !== null && m[2].trim() === heading;
+  });
   if (start === -1) return null;
+  const level = headingLine.exec(lines[start])![1].length;
   const rest = lines.slice(start + 1);
-  const end = rest.findIndex((l) => /^#{1,6}\s/.test(l));
+  const end = rest.findIndex((l) => {
+    const m = headingLine.exec(l);
+    return m !== null && m[1].length <= level;
+  });
   const picked = (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
   return picked === "" ? null : picked;
 }
 
+function unquote(value: string): string {
+  if (value.length >= 2) {
+    const first = value[0];
+    const last = value[value.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return value.slice(1, -1);
+    }
+  }
+  return value;
+}
+
 export function parseExplanationFile(raw: string): ParsedExplanation {
-  const match = FRONTMATTER.exec(raw);
+  const trimmed = raw.replace(/^\s+/, "");
+  const match = FRONTMATTER.exec(trimmed);
   if (!match) {
     throw new Error("explanation file has no --- frontmatter --- block");
   }
@@ -69,7 +93,7 @@ export function parseExplanationFile(raw: string): ParsedExplanation {
   for (const line of match[1].split(/\r?\n/)) {
     const sep = line.indexOf(":");
     if (sep === -1) continue;
-    fm[line.slice(0, sep).trim()] = line.slice(sep + 1).trim();
+    fm[line.slice(0, sep).trim()] = unquote(line.slice(sep + 1).trim());
   }
 
   const skill = readField(fm, "skill");
@@ -77,7 +101,7 @@ export function parseExplanationFile(raw: string): ParsedExplanation {
     throw new Error(`explanation frontmatter "skill" must be reading or listening, got "${skill}"`);
   }
 
-  const body = raw.slice(match[0].length).trim();
+  const body = trimmed.slice(match[0].length).trim();
   if (body === "") {
     throw new Error("explanation file has an empty body");
   }

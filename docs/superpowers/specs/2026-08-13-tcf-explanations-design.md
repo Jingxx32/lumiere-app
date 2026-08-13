@@ -20,7 +20,7 @@
 | 选项级钉一句话 | **不做**。选项对错解析写在讲解正文里，整篇显示 |
 | 真源 | 仓库里的 markdown 文件，数据库是派生物 |
 | 为什么文件是真源 | `scripts/import-tcf-reading.ts:77` 重导一套题会先 `delete` 该套全部 question 再重插；讲解只写库会被静默抹掉且不可恢复 |
-| 题目定位 | `test_number` + `skill` + `order_index`，即 `T1 CE Q5`。题干文字会跨套重复（"Quelle est la nationalité d'Elsa ?" 在 test 1/9/31 各有一题），不能作主键 |
+| 题目定位 | `test_number` + `skill` + `order_index`，即 `T1 CE Q5`。题干文字会跨套重复（"Quel est le passe-temps préféré de Julien ?" 在 test 1/9/31 各有一题），不能作主键 |
 | 是否需要截图 | 阅读题不需要：`passage` 覆盖 1521/1521。听力 `transcript` 覆盖 1525/1638，缺的 113 题需截图。版面信息重要的图片题也需截图 |
 | 触发条件 | 仅当用户说「今天我们来精讲TCF题目」之后才写文件与同步；其余对话只讲不存 |
 | 批量回填 | 不做。一题一存，随讲随写 |
@@ -67,13 +67,13 @@ written: 2026-08-13
 
 ## 全文翻译
 
-**Question** — What is Elsa's nationality?
+**Question** — What is Julien's favorite hobby?
 
 **Text**
-> Hi Paul,
-> I'm writing to you from Canada. …
+> Hi Marc,
+> I'm writing to you from Vancouver. …
 
-**Options** — A. Canadian · B. Spanish · C. Italian · D. Mexican
+**Options** — A. Reading · B. Cycling · C. Painting · D. Cooking
 
 ## 题干
 …

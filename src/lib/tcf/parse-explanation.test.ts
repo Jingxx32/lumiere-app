@@ -12,13 +12,13 @@ written: 2026-08-13
 
 ## 全文翻译
 
-**Question** — What is Elsa's nationality?
+**Question** — What is Julien's favorite hobby?
 
-**Options** — A. Canadian · B. Spanish · C. Italian · D. Mexican
+**Options** — A. Reading · B. Cycling · C. Painting · D. Cooking
 
 ## 题干
 
-Quelle est la nationalité d'Elsa ?
+Quel est le passe-temps préféré de Julien ?
 
 **答案：B**
 `;
@@ -41,7 +41,7 @@ test("extracts the 全文翻译 section, stopping at the next heading", () => {
   const p = parseExplanationFile(SAMPLE);
   assert.ok(p.translationEn !== null);
   assert.ok(p.translationEn.startsWith("**Question**"));
-  assert.ok(p.translationEn.includes("D. Mexican"));
+  assert.ok(p.translationEn.includes("D. Cooking"));
   assert.ok(!p.translationEn.includes("题干"));
 });
 
@@ -108,22 +108,22 @@ written: 2026-08-13
 
 ### Question
 
-What is Elsa's nationality?
+What is Julien's favorite hobby?
 
 ### Options
 
-A. Canadian · B. Spanish
+A. Reading · B. Cycling
 
 ## 题干
 
-Quelle est la nationalité d'Elsa ?
+Quel est le passe-temps préféré de Julien ?
 `;
   const p = parseExplanationFile(raw);
   assert.ok(p.translationEn !== null);
   assert.ok(p.translationEn.includes("### Question"));
-  assert.ok(p.translationEn.includes("What is Elsa's nationality?"));
+  assert.ok(p.translationEn.includes("What is Julien's favorite hobby?"));
   assert.ok(p.translationEn.includes("### Options"));
-  assert.ok(p.translationEn.includes("A. Canadian"));
+  assert.ok(p.translationEn.includes("A. Reading"));
   assert.ok(!p.translationEn.includes("题干"));
 });
 

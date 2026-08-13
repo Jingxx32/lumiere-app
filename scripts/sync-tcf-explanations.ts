@@ -94,7 +94,7 @@ async function main() {
         .update(tcfQuestions)
         .set({
           explanation: parsed.body,
-          ...(parsed.translationEn ? { translationEn: parsed.translationEn } : {}),
+          translationEn: parsed.translationEn,
         })
         .where(eq(tcfQuestions.id, rows[0].id));
 
@@ -115,4 +115,7 @@ async function main() {
   }
 }
 
-main();
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exitCode = 1;
+});

@@ -1,0 +1,71 @@
+"use client";
+
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+/**
+ * Renders one question's hand-written explanation (see
+ * docs/superpowers/specs/2026-08-13-tcf-explanations-design.md).
+ *
+ * The markdown is authored by hand and contains conjugation tables, so GFM is
+ * required — without remark-gfm a table renders as a row of pipes. Styling is
+ * an explicit component map rather than a typography plugin, to stay consistent
+ * with the surrounding Transcription panel and avoid a new Tailwind dependency.
+ */
+export function ExplanationPanel({ markdown }: { markdown: string }) {
+  if (!markdown.trim()) return null;
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-surface-muted/60 px-4 py-3">
+      <p className="text-[11px] uppercase tracking-widest text-subtle-foreground font-medium mb-2">
+        Explication
+      </p>
+      <div className="text-sm leading-relaxed text-foreground space-y-3">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            h1: ({ children }) => (
+              <h3 className="text-sm font-semibold text-foreground mt-4 first:mt-0">{children}</h3>
+            ),
+            h2: ({ children }) => (
+              <h3 className="text-sm font-semibold text-foreground mt-4 first:mt-0">{children}</h3>
+            ),
+            h3: ({ children }) => (
+              <h4 className="text-sm font-medium text-foreground mt-3">{children}</h4>
+            ),
+            p: ({ children }) => <p className="my-2">{children}</p>,
+            ul: ({ children }) => <ul className="my-2 list-disc pl-5 space-y-1">{children}</ul>,
+            ol: ({ children }) => <ol className="my-2 list-decimal pl-5 space-y-1">{children}</ol>,
+            blockquote: ({ children }) => (
+              <blockquote className="my-2 border-l-2 border-border/70 pl-3 text-muted-foreground">
+                {children}
+              </blockquote>
+            ),
+            code: ({ children }) => (
+              <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[13px]">
+                {children}
+              </code>
+            ),
+            table: ({ children }) => (
+              <div className="my-3 overflow-x-auto">
+                <table className="w-full border-collapse text-[13px]">{children}</table>
+              </div>
+            ),
+            th: ({ children }) => (
+              <th className="border border-border/60 bg-surface-muted px-2 py-1 text-left font-medium">
+                {children}
+              </th>
+            ),
+            td: ({ children }) => (
+              <td className="border border-border/60 px-2 py-1 align-top">{children}</td>
+            ),
+            hr: () => <hr className="my-4 border-border/60" />,
+            a: ({ children }) => <span>{children}</span>,
+          }}
+        >
+          {markdown}
+        </ReactMarkdown>
+      </div>
+    </div>
+  );
+}

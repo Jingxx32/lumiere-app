@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Eye, EyeOff, Check, X, Loader2, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ExplanationPanel } from "./explanation-panel";
 import { LevelNav } from "./level-nav";
 import { WordLookupPopover } from "@/components/word-lookup-popover";
 import { recordTcfQuestionAttempt } from "@/lib/actions/tcf";
@@ -304,6 +305,9 @@ export function DrillRunner({
               </p>
             </div>
           )}
+
+          {/* Explanation (reveal on answer) */}
+          {showAnswer && q.explanation && <ExplanationPanel markdown={q.explanation} />}
         </div>
 
         <WordLookupPopover

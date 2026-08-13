@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight, Check, X, Flag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ExplanationPanel } from "./explanation-panel";
 import { recordTcfExamAttempt } from "@/lib/actions/tcf";
 import type { TcfQuestionForDrill, TcfLevel, TcfExamAnswer } from "@/lib/actions/tcf";
 import type { TcfPerLevel } from "@/lib/db/schema";
@@ -353,6 +354,9 @@ export function ExamRunner({ questions, skill, testNumber }: ExamRunnerProps) {
               </p>
             </div>
           )}
+
+          {/* Explanation (review mode) */}
+          {finished && q.explanation && <ExplanationPanel markdown={q.explanation} />}
         </div>
 
         {/* Prev / Next */}

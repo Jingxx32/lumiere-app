@@ -2,6 +2,7 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { Components } from "react-markdown";
 
 /**
  * Renders one question's hand-written explanation (see
@@ -12,6 +13,51 @@ import remarkGfm from "remark-gfm";
  * an explicit component map rather than a typography plugin, to stay consistent
  * with the surrounding Transcription panel and avoid a new Tailwind dependency.
  */
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const MARKDOWN_COMPONENTS = {
+  h1: ({ children }: any) => (
+    <h3 className="text-sm font-semibold text-foreground mt-4 first:mt-0">{children}</h3>
+  ),
+  h2: ({ children }: any) => (
+    <h3 className="text-sm font-semibold text-foreground mt-4 first:mt-0">{children}</h3>
+  ),
+  h3: ({ children }: any) => (
+    <h4 className="text-sm font-medium text-foreground mt-3">{children}</h4>
+  ),
+  p: ({ children }: any) => <p className="my-2">{children}</p>,
+  ul: ({ children }: any) => <ul className="my-2 list-disc pl-5 space-y-1">{children}</ul>,
+  ol: ({ children }: any) => <ol className="my-2 list-decimal pl-5 space-y-1">{children}</ol>,
+  blockquote: ({ children }: any) => (
+    <blockquote className="my-2 border-l-2 border-border/70 pl-3 text-muted-foreground">
+      {children}
+    </blockquote>
+  ),
+  code: ({ children }: any) => (
+    <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[13px]">
+      {children}
+    </code>
+  ),
+  table: ({ children }: any) => (
+    <div className="my-3 overflow-x-auto">
+      <table className="w-full border-collapse text-[13px]">{children}</table>
+    </div>
+  ),
+  th: ({ children }: any) => (
+    <th className="border border-border/60 bg-surface-muted px-2 py-1 text-left font-medium">
+      {children}
+    </th>
+  ),
+  td: ({ children }: any) => (
+    <td className="border border-border/60 px-2 py-1 align-top">{children}</td>
+  ),
+  hr: () => <hr className="my-4 border-border/60" />,
+  // Links are deliberately flattened to plain text because explanation bodies are prose,
+  // not link collections. The link destination is therefore dropped.
+  a: ({ children }: any) => <span>{children}</span>,
+} satisfies Components;
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export function ExplanationPanel({ markdown }: { markdown: string }) {
   if (!markdown.trim()) return null;
 
@@ -20,48 +66,10 @@ export function ExplanationPanel({ markdown }: { markdown: string }) {
       <p className="text-[11px] uppercase tracking-widest text-subtle-foreground font-medium mb-2">
         Explication
       </p>
-      <div className="text-sm leading-relaxed text-foreground space-y-3">
+      <div className="text-sm leading-relaxed text-foreground">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          components={{
-            h1: ({ children }) => (
-              <h3 className="text-sm font-semibold text-foreground mt-4 first:mt-0">{children}</h3>
-            ),
-            h2: ({ children }) => (
-              <h3 className="text-sm font-semibold text-foreground mt-4 first:mt-0">{children}</h3>
-            ),
-            h3: ({ children }) => (
-              <h4 className="text-sm font-medium text-foreground mt-3">{children}</h4>
-            ),
-            p: ({ children }) => <p className="my-2">{children}</p>,
-            ul: ({ children }) => <ul className="my-2 list-disc pl-5 space-y-1">{children}</ul>,
-            ol: ({ children }) => <ol className="my-2 list-decimal pl-5 space-y-1">{children}</ol>,
-            blockquote: ({ children }) => (
-              <blockquote className="my-2 border-l-2 border-border/70 pl-3 text-muted-foreground">
-                {children}
-              </blockquote>
-            ),
-            code: ({ children }) => (
-              <code className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[13px]">
-                {children}
-              </code>
-            ),
-            table: ({ children }) => (
-              <div className="my-3 overflow-x-auto">
-                <table className="w-full border-collapse text-[13px]">{children}</table>
-              </div>
-            ),
-            th: ({ children }) => (
-              <th className="border border-border/60 bg-surface-muted px-2 py-1 text-left font-medium">
-                {children}
-              </th>
-            ),
-            td: ({ children }) => (
-              <td className="border border-border/60 px-2 py-1 align-top">{children}</td>
-            ),
-            hr: () => <hr className="my-4 border-border/60" />,
-            a: ({ children }) => <span>{children}</span>,
-          }}
+          components={MARKDOWN_COMPONENTS}
         >
           {markdown}
         </ReactMarkdown>

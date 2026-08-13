@@ -28,17 +28,23 @@ import { existsSync, readdirSync, readFileSync } from "fs";
 import path from "path";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, isNotNull, notInArray } from "drizzle-orm";
 
 import { tcfSets, tcfQuestions } from "../src/lib/db/schema";
 import { parseExplanationFile, expectedFileName } from "../src/lib/tcf/parse-explanation";
 
-const DIR =
-  process.env.TCF_EXPLANATIONS_DIR ?? path.join(process.cwd(), "data", "tcf-explanations");
+const DIR_IS_FALLBACK = process.env.TCF_EXPLANATIONS_DIR === undefined;
+const DIR = process.env.TCF_EXPLANATIONS_DIR ?? path.join(process.cwd(), "data", "tcf-explanations");
+
+function describeDir(): string {
+  return DIR_IS_FALLBACK
+    ? `${DIR} (TCF_EXPLANATIONS_DIR is not set — falling back to the in-repo directory, which is not durable storage)`
+    : DIR;
+}
 
 async function main() {
   if (!existsSync(DIR)) {
-    console.log(`Explanations directory not found at ${DIR} — nothing to do.`);
+    console.log(`Explanations directory not found at ${describeDir()} — nothing to do.`);
     return;
   }
 
@@ -47,7 +53,7 @@ async function main() {
     .sort();
 
   if (files.length === 0) {
-    console.log(`No explanation files in ${DIR} — nothing to do.`);
+    console.log(`No explanation files in ${describeDir()} — nothing to do.`);
     return;
   }
 
@@ -56,10 +62,16 @@ async function main() {
 
   let updated = 0;
   const problems: string[] = [];
+  // Rows this run wrote to — excluded from the orphan check below.
+  const claimedIds = new Set<string>();
+  // (test, skill) pairs the file set actually names — scopes the orphan check
+  // so a set the run never touched is never reported as drifted.
+  const touchedSets = new Map<string, { test: number; skill: "reading" | "listening" }>();
 
   for (const file of files) {
     try {
       const parsed = parseExplanationFile(readFileSync(path.join(DIR, file), "utf8"));
+      touchedSets.set(`${parsed.test}|${parsed.skill}`, { test: parsed.test, skill: parsed.skill });
 
       const expected = expectedFileName(parsed);
       if (file !== expected) {
@@ -98,6 +110,7 @@ async function main() {
         })
         .where(eq(tcfQuestions.id, rows[0].id));
 
+      claimedIds.add(rows[0].id);
       updated += 1;
       console.log(`✓ ${file}`);
     } catch (err) {
@@ -105,9 +118,52 @@ async function main() {
     }
   }
 
+  // Reconciliation: within the sets this run's files actually named, find
+  // questions that still carry an explanation but weren't claimed by any
+  // file this run — e.g. a file was renamed/re-targeted or deleted, so the
+  // old row's explanation is now orphaned drift between files and DB.
+  const orphans: { test: number; skill: string; question: number }[] = [];
+  if (touchedSets.size > 0) {
+    const setConditions = [...touchedSets.values()].map((s) =>
+      and(eq(tcfSets.testNumber, s.test), eq(tcfSets.skill, s.skill)),
+    );
+
+    const orphanRows = await db
+      .select({
+        testNumber: tcfSets.testNumber,
+        skill: tcfSets.skill,
+        orderIndex: tcfQuestions.orderIndex,
+      })
+      .from(tcfQuestions)
+      .innerJoin(tcfSets, eq(tcfQuestions.setId, tcfSets.id))
+      .where(
+        and(
+          or(...setConditions),
+          isNotNull(tcfQuestions.explanation),
+          claimedIds.size > 0 ? notInArray(tcfQuestions.id, [...claimedIds]) : undefined,
+        ),
+      );
+
+    for (const r of orphanRows) {
+      orphans.push({ test: r.testNumber, skill: r.skill, question: r.orderIndex });
+    }
+  }
+
   await client.end();
 
   console.log(`\n${updated}/${files.length} explanation(s) synced.`);
+
+  if (orphans.length > 0) {
+    console.warn(
+      `\n${orphans.length} orphaned explanation(s) — these questions carry an explanation in the ` +
+        `database with no corresponding file in this run, so the file set and database have diverged:`,
+    );
+    for (const o of orphans) {
+      const prefix = o.skill === "reading" ? "CE" : "CO";
+      console.warn(`  ⚠ ${prefix}-T${o.test}-Q${o.question}`);
+    }
+  }
+
   if (problems.length > 0) {
     console.error(`\n${problems.length} problem(s):`);
     for (const p of problems) console.error(`  ✗ ${p}`);

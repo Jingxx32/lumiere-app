@@ -79,13 +79,13 @@ written: 2026-08-13
 
 ## 全文翻译
 
-**Question** — What is Elsa's nationality?
+**Question** — What is Julien's favorite hobby?
 
-**Options** — A. Canadian · B. Spanish · C. Italian · D. Mexican
+**Options** — A. Reading · B. Cycling · C. Painting · D. Cooking
 
 ## 题干
 
-Quelle est la nationalité d'Elsa ?
+Quel est le passe-temps préféré de Julien ?
 
 **答案：B**
 `;
@@ -108,7 +108,7 @@ test("extracts the 全文翻译 section, stopping at the next heading", () => {
   const p = parseExplanationFile(SAMPLE);
   assert.ok(p.translationEn !== null);
   assert.ok(p.translationEn.startsWith("**Question**"));
-  assert.ok(p.translationEn.includes("D. Mexican"));
+  assert.ok(p.translationEn.includes("D. Cooking"));
   assert.ok(!p.translationEn.includes("题干"));
 });
 
@@ -722,7 +722,7 @@ cd ~/Documents/Projects/lumiere && npm run dev
 
 - [ ] **Step 2: 打开 T1 Q5 并揭晓答案**
 
-浏览器进 TCF 阅读 A2 drill，翻到 Test 1 第 5 题（`Quelle est la nationalité d'Elsa ?`），点「Afficher réponse」。
+浏览器进 TCF 阅读 A2 drill，翻到 Test 1 第 5 题，点「Afficher réponse」。
 
 Expected:
 - 选项区下方出现 **Explication** 面板；

@@ -5,7 +5,7 @@
 
 ## 1. 概述
 
-刷 TCF 题时点「Afficher réponse」，除了高亮正确选项，还要看到一篇**中文讲解 + 全题英文翻译**。讲解由用户与 Claude 在对话里逐题产出，写成 markdown 文件存进本仓库，再由脚本同步进 `tcf_questions.explanation`，前端渲染。
+刷 TCF 题时点「Afficher réponse」，除了高亮正确选项，还要看到一篇**中文讲解 + 全题英文翻译**。讲解由用户与 Claude 在对话里逐题产出，写成 markdown 文件存在**仓库外的私有仓库**（见 §4.1），再由脚本同步进 `tcf_questions.explanation`，前端渲染。
 
 现状缺口：`tcf_questions.explanation` 与 `translation_en` 两个字段建表时就留好了，但 3159 道题**全为 null**——解析器（`src/lib/tcf/parse.ts`）一律写 null，前端也从未渲染过这两个字段。
 
@@ -20,13 +20,14 @@
 | 选项级钉一句话 | **不做**。选项对错解析写在讲解正文里，整篇显示 |
 | 真源 | 仓库里的 markdown 文件，数据库是派生物 |
 | 为什么文件是真源 | `scripts/import-tcf-reading.ts:77` 重导一套题会先 `delete` 该套全部 question 再重插；讲解只写库会被静默抹掉且不可恢复 |
-| 题目定位 | `test_number` + `skill` + `order_index`，即 `T1 CE Q5`。题干文字会跨套重复（"Quelle est la nationalité d'Elsa ?" 在 test 1/9/31 各有一题），不能作主键 |
+| 题目定位 | `test_number` + `skill` + `order_index`，即 `T1 CE Q5`。题干文字会跨套重复（"Quel est le passe-temps préféré de Julien ?" 在 test 1/9/31 各有一题），不能作主键 |
 | 是否需要截图 | 阅读题不需要：`passage` 覆盖 1521/1521。听力 `transcript` 覆盖 1525/1638，缺的 113 题需截图。版面信息重要的图片题也需截图 |
 | 触发条件 | 仅当用户说「今天我们来精讲TCF题目」之后才写文件与同步；其余对话只讲不存 |
 | 批量回填 | 不做。一题一存，随讲随写 |
 | 讲解语言 | 中文讲解 + 英文简释（用户明确要求），另含全题英文翻译区块 |
 | `translation_en` 字段 | 本期由脚本从「全文翻译」区块顺手抽出填入；不填也不影响显示 |
 | 词汇/语法点结构化 | 本期不做。以后若要接 `vocabulary_lookups` / `grammar_points`，再单独设计 |
+| 讲解文件的存放位置 | 不放本仓库。`data/` 已 gitignore 且本仓库远程是 public GitHub，文件里含受版权保护的 TCF 原文，既不能入库版本控制也不能推公开仓；改放独立的私有仓库，脚本通过环境变量 `TCF_EXPLANATIONS_DIR` 定位（未设置时回退到仓库内 `data/tcf-explanations`，仅本地、不持久） |
 
 ## 3. 数据模型
 
@@ -43,10 +44,14 @@
 
 ### 4.1 路径与命名
 
+讲解文件含受版权保护的 TCF 原文，不能放进本仓库（`data/` 已 gitignore，且本仓库远程是 public GitHub）。实际存放在仓库外的一个私有仓库里，脚本通过环境变量 `TCF_EXPLANATIONS_DIR` 指向该目录：
+
 ```
-data/tcf-explanations/CE-T1-Q5.md      # CE = reading（compréhension écrite）
-data/tcf-explanations/CO-T13-Q30.md    # CO = listening（compréhension orale）
+$TCF_EXPLANATIONS_DIR/CE-T1-Q5.md      # CE = reading（compréhension écrite）
+$TCF_EXPLANATIONS_DIR/CO-T13-Q30.md    # CO = listening（compréhension orale）
 ```
+
+`TCF_EXPLANATIONS_DIR` 未设置时回退到仓库内 `data/tcf-explanations`（与 `TCF_READING_DIR` 等其他 TCF 路径变量同一约定，见 `.env.example`），保证新 clone 也能跑；但该回退目录是本地、未跟踪的，不作为持久存储。
 
 文件名即定位三件套，肉眼可读、可 grep。
 
@@ -62,13 +67,13 @@ written: 2026-08-13
 
 ## 全文翻译
 
-**Question** — What is Elsa's nationality?
+**Question** — What is Julien's favorite hobby?
 
 **Text**
-> Hi Paul,
-> I'm writing to you from Canada. …
+> Hi Marc,
+> I'm writing to you from Vancouver. …
 
-**Options** — A. Canadian · B. Spanish · C. Italian · D. Mexican
+**Options** — A. Reading · B. Cycling · C. Painting · D. Cooking
 
 ## 题干
 …
@@ -100,12 +105,13 @@ frontmatter 供脚本定位，不进数据库、不显示。frontmatter 之后�
 
 `npm run tcf:explain-sync` → `scripts/sync-tcf-explanations.ts`
 
-1. 扫 `data/tcf-explanations/*.md`；
-2. 解析 frontmatter，按 `test + skill + question` 查 `tcf_sets` join `tcf_questions`；
-3. 把 frontmatter 之后的全文写入 `explanation`，把「全文翻译」区块正文写入 `translation_en`；
-4. 幂等：重跑只覆盖同一行，不产生重复；
-5. 匹配不到的文件报错并列出，不静默跳过；
-6. 题库重导后重跑一次，讲解全部恢复。
+1. 目录取 `process.env.TCF_EXPLANATIONS_DIR`，未设置则回退到仓库内 `data/tcf-explanations`（见 §4.1）；目录不存在时打印清晰提示并 exit 0，不报 ENOENT 栈；
+2. 扫该目录下 `*.md`；
+3. 解析 frontmatter，按 `test + skill + question` 查 `tcf_sets` join `tcf_questions`；
+4. 把 frontmatter 之后的全文写入 `explanation`，把「全文翻译」区块正文写入 `translation_en`；
+5. 幂等：重跑只覆盖同一行，不产生重复；
+6. 匹配不到的文件报错并列出，不静默跳过；
+7. 题库重导后重跑一次，讲解全部恢复。
 
 ## 6. 前端显示
 
@@ -119,7 +125,7 @@ frontmatter 供脚本定位，不进数据库、不显示。frontmatter 之后�
 用户：今天我们来精讲TCF题目          ← 闸门打开，本次会话有效
 用户：T1 Q5
 Claude：从库里取题干/原文/选项/答案 → 按 §4.3 讲解
-        → 写 data/tcf-explanations/CE-T1-Q5.md
+        → 写 $TCF_EXPLANATIONS_DIR/CE-T1-Q5.md
         → 跑 npm run tcf:explain-sync
 ```
 
@@ -130,7 +136,7 @@ Claude：从库里取题干/原文/选项/答案 → 按 §4.3 讲解
 - 选项级钉一句话的结构化展示
 - 词汇 / 语法点抽取入 `vocabulary_lookups` / `grammar_points`
 - 批量回填历史题
-- 改动 french-wiki 与 sundew 两个仓库
+- 改动 sundew，或改动 french-wiki 的口语闪卡流水线（`raw/` `wiki/` `learning/`）。french-wiki 现作为讲解文件的私有存放处（`tcf/explanations/`，见 §4.1），两条线除此之外互不相干
 
 ## 9. 风险与取舍
 

@@ -99,6 +99,7 @@ export interface TcfQuestionForDrill {
   answer: number;
   transcript: string | null;
   passage: string | null;
+  explanation: string | null;
   imagePath: string | null;
   audioPath: string | null;
 }
@@ -121,6 +122,7 @@ export async function getTcfSetQuestions(
       answer: tcfQuestions.answer,
       transcript: tcfQuestions.transcript,
       passage: tcfQuestions.passage,
+      explanation: tcfQuestions.explanation,
       imagePath: tcfQuestions.imagePath,
       audioPath: tcfQuestions.audioPath,
     })
@@ -259,6 +261,7 @@ export async function getTcfDrillQuestions(
       answer: tcfQuestions.answer,
       transcript: tcfQuestions.transcript,
       passage: tcfQuestions.passage,
+      explanation: tcfQuestions.explanation,
       imagePath: tcfQuestions.imagePath,
       audioPath: tcfQuestions.audioPath,
     })

@@ -12,7 +12,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed-rules": "tsx scripts/seed-rules.ts",
-    "db:reenrich": "tsx scripts/reenrich-vocab.ts"
+    "db:reenrich": "tsx scripts/reenrich-vocab.ts",
+    "tcf:explain-sync": "tsx scripts/sync-tcf-explanations.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.2",
@@ -34,7 +35,9 @@
     "postgres": "^3.4.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0",
     "recharts": "^3.8.1",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.5.4",
     "zod": "^3.23.8"
   },

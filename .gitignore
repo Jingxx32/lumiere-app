@@ -38,6 +38,10 @@ next-env.d.ts
 public/media/
 scripts/.tcf-cache/
 
+# Notes holding personal learning data — real scores, exam dates, weak-point
+# write-ups. This repo is public; anything with your own numbers goes here.
+docs/private/
+
 # worktrees, temp & test artifacts
 .claude/worktrees/
 *.tmp.mjs

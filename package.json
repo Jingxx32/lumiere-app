@@ -12,7 +12,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed-rules": "tsx scripts/seed-rules.ts",
-    "db:reenrich": "tsx scripts/reenrich-vocab.ts"
+    "db:reenrich": "tsx scripts/reenrich-vocab.ts",
+    "tcf:explain-sync": "tsx scripts/sync-tcf-explanations.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.2",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,14 +26,19 @@ export function AddDocumentDialog() {
   const [state, action, pending] = useActionState<
     CreateDocumentResult | null,
     FormData
-  >(createDocument, null);
+  >(
+    async (_previousState, formData) => {
+      const result = await createDocument(null, formData);
 
-  useEffect(() => {
-    if (state?.ok) {
-      setOpen(false);
-      formRef.current?.reset();
-    }
-  }, [state]);
+      if (result.ok) {
+        formRef.current?.reset();
+        setOpen(false);
+      }
+
+      return result;
+    },
+    null,
+  );
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

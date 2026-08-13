@@ -15,7 +15,7 @@ console.log("Applied migrations:", rows.map((r: Record<string, unknown>) => r.ha
 try {
   const cols = await db.execute(sql`SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'vocabulary_lookups' ORDER BY ordinal_position`);
   console.log("vocabulary_lookups columns:", cols.map((c: Record<string, unknown>) => c.column_name));
-} catch (e) {
+} catch {
   console.log("vocabulary_lookups doesn't exist yet");
 }
 

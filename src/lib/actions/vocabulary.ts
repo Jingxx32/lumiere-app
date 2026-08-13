@@ -14,7 +14,7 @@ import type { LookupResult } from "@/lib/ai/lookup";
 import { lookupWord } from "@/lib/ai/lookup";
 import { enrichVocab, type FrenchVocabEntry } from "@/lib/ai/enrich";
 import { norm, upsertEntry, upsertAlias, recordOccurrence, resolveLemma } from "@/lib/vocabulary/helpers";
-import type { LookupSource, OccurrenceLink, VocabEntrySummary, VocabEntryDetail } from "@/lib/vocabulary/types";
+import type { LookupSource, VocabEntrySummary, VocabEntryDetail } from "@/lib/vocabulary/types";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */

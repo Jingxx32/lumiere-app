@@ -27,6 +27,7 @@
 | 讲解语言 | 中文讲解 + 英文简释（用户明确要求），另含全题英文翻译区块 |
 | `translation_en` 字段 | 本期由脚本从「全文翻译」区块顺手抽出填入；不填也不影响显示 |
 | 词汇/语法点结构化 | 本期不做。以后若要接 `vocabulary_lookups` / `grammar_points`，再单独设计 |
+| 讲解文件的存放位置 | 不放本仓库。`data/` 已 gitignore 且本仓库远程是 public GitHub，文件里含受版权保护的 TCF 原文，既不能入库版本控制也不能推公开仓；改放独立的私有仓库，脚本通过环境变量 `TCF_EXPLANATIONS_DIR` 定位（未设置时回退到仓库内 `data/tcf-explanations`，仅本地、不持久） |
 
 ## 3. 数据模型
 
@@ -43,10 +44,14 @@
 
 ### 4.1 路径与命名
 
+讲解文件含受版权保护的 TCF 原文，不能放进本仓库（`data/` 已 gitignore，且本仓库远程是 public GitHub）。实际存放在仓库外的一个私有仓库里，脚本通过环境变量 `TCF_EXPLANATIONS_DIR` 指向该目录：
+
 ```
-data/tcf-explanations/CE-T1-Q5.md      # CE = reading（compréhension écrite）
-data/tcf-explanations/CO-T13-Q30.md    # CO = listening（compréhension orale）
+$TCF_EXPLANATIONS_DIR/CE-T1-Q5.md      # CE = reading（compréhension écrite）
+$TCF_EXPLANATIONS_DIR/CO-T13-Q30.md    # CO = listening（compréhension orale）
 ```
+
+`TCF_EXPLANATIONS_DIR` 未设置时回退到仓库内 `data/tcf-explanations`（与 `TCF_READING_DIR` 等其他 TCF 路径变量同一约定，见 `.env.example`），保证新 clone 也能跑；但该回退目录是本地、未跟踪的，不作为持久存储。
 
 文件名即定位三件套，肉眼可读、可 grep。
 
@@ -100,12 +105,13 @@ frontmatter 供脚本定位，不进数据库、不显示。frontmatter 之后�
 
 `npm run tcf:explain-sync` → `scripts/sync-tcf-explanations.ts`
 
-1. 扫 `data/tcf-explanations/*.md`；
-2. 解析 frontmatter，按 `test + skill + question` 查 `tcf_sets` join `tcf_questions`；
-3. 把 frontmatter 之后的全文写入 `explanation`，把「全文翻译」区块正文写入 `translation_en`；
-4. 幂等：重跑只覆盖同一行，不产生重复；
-5. 匹配不到的文件报错并列出，不静默跳过；
-6. 题库重导后重跑一次，讲解全部恢复。
+1. 目录取 `process.env.TCF_EXPLANATIONS_DIR`，未设置则回退到仓库内 `data/tcf-explanations`（见 §4.1）；目录不存在时打印清晰提示并 exit 0，不报 ENOENT 栈；
+2. 扫该目录下 `*.md`；
+3. 解析 frontmatter，按 `test + skill + question` 查 `tcf_sets` join `tcf_questions`；
+4. 把 frontmatter 之后的全文写入 `explanation`，把「全文翻译」区块正文写入 `translation_en`；
+5. 幂等：重跑只覆盖同一行，不产生重复；
+6. 匹配不到的文件报错并列出，不静默跳过；
+7. 题库重导后重跑一次，讲解全部恢复。
 
 ## 6. 前端显示
 

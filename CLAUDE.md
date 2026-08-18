@@ -61,10 +61,10 @@ npm run db:reenrich  # Re-run vocab enrichment for already-enriched entries
 
 日常逐题写讲解走 dev-only 端点（需 `npm run dev` 开着）：
 
-````bash
+```bash
 curl -X POST localhost:3000/api/tcf/explanations --data-binary @CE-T1-Q5.md
 curl -X POST "localhost:3000/api/tcf/explanations?test=1&skill=listening&q=3" --data-binary @-
-````
+```
 
 正文是原始 markdown。定位取自 frontmatter（`test` / `skill` / `question`），
 缺失时取 URL 的 `?test=&skill=&q=`；两者不一致会被拒绝。生成讲解时必须满足：

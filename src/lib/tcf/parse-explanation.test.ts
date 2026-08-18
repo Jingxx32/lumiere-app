@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseExplanationFile, expectedFileName } from "./parse-explanation";
+import {
+  parseExplanationFile,
+  parseExplanationBody,
+  expectedFileName,
+  explanationLocatorLabel,
+} from "./parse-explanation";
 
 const SAMPLE = `---
 test: 1
@@ -161,4 +166,36 @@ foo
 `;
   const p = parseExplanationFile(raw);
   assert.equal(p.translationEn, null);
+});
+
+test("parseExplanationBody returns a null locator when frontmatter is absent", () => {
+  const raw = "## 全文翻译\n\nSome text.\n\n## 题干\n\nfoo\n";
+  const p = parseExplanationBody(raw);
+  assert.equal(p.locator, null);
+  assert.ok(p.body.startsWith("## 全文翻译"));
+  assert.equal(p.translationEn, "Some text.");
+});
+
+test("parseExplanationBody returns the locator when frontmatter is present", () => {
+  const p = parseExplanationBody(SAMPLE);
+  assert.deepEqual(p.locator, { test: 1, skill: "reading", question: 5 });
+  assert.ok(p.body.startsWith("## 全文翻译"));
+});
+
+test("parseExplanationBody still rejects an invalid skill", () => {
+  const raw = `---\ntest: 1\nskill: speaking\nquestion: 5\n---\n\n## 题干\nfoo\n`;
+  assert.throws(() => parseExplanationBody(raw), /skill/i);
+});
+
+test("parseExplanationBody still rejects an incomplete locator", () => {
+  const raw = `---\ntest: 1\nskill: reading\n---\n\n## 题干\nfoo\n`;
+  assert.throws(() => parseExplanationBody(raw), /question/i);
+});
+
+test("explanationLocatorLabel builds the CE/CO label without the extension", () => {
+  assert.equal(explanationLocatorLabel({ test: 1, skill: "reading", question: 5 }), "CE-T1-Q5");
+  assert.equal(
+    explanationLocatorLabel({ test: 13, skill: "listening", question: 30 }),
+    "CO-T13-Q30",
+  );
 });

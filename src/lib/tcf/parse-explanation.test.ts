@@ -199,3 +199,13 @@ test("explanationLocatorLabel builds the CE/CO label without the extension", () 
     "CO-T13-Q30",
   );
 });
+
+test("reports the frontmatter problem, not the empty body, when a file has both", () => {
+  const raw = "---\ntest: 1\nskill: bogus\n---\n";
+  assert.throws(() => parseExplanationFile(raw), /skill/i);
+  assert.throws(() => parseExplanationBody(raw), /skill/i);
+});
+
+test("reports an empty body when there is no frontmatter to blame", () => {
+  assert.throws(() => parseExplanationFile(""), /empty body/i);
+});

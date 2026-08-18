@@ -105,11 +105,9 @@ export function parseExplanationBody(raw: string): ParsedExplanationBody {
   const trimmed = raw.replace(/^\s+/, "");
   const match = FRONTMATTER.exec(trimmed);
 
-  const body = (match ? trimmed.slice(match[0].length) : trimmed).trim();
-  if (body === "") {
-    throw new Error("explanation file has an empty body");
-  }
-
+  // Frontmatter is validated before the body-emptiness check so a file with
+  // both a malformed locator and an empty body still reports the locator
+  // problem — the message parseExplanationFile has always produced.
   let locator: ExplanationLocator | null = null;
   if (match) {
     const fm: Record<string, string> = {};
@@ -131,6 +129,11 @@ export function parseExplanationBody(raw: string): ParsedExplanationBody {
       skill,
       question: readNumber(fm, "question"),
     };
+  }
+
+  const body = (match ? trimmed.slice(match[0].length) : trimmed).trim();
+  if (body === "") {
+    throw new Error("explanation file has an empty body");
   }
 
   return { locator, body, translationEn: sectionBody(body, TRANSLATION_HEADING) };

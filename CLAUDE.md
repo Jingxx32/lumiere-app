@@ -57,6 +57,24 @@ npm run db:seed-rules # Seed the grammar-rules knowledge base
 npm run db:reenrich  # Re-run vocab enrichment for already-enriched entries
 ```
 
+### 写入单题 TCF 讲解
+
+日常逐题写讲解走 dev-only 端点（需 `npm run dev` 开着）：
+
+````bash
+curl -X POST localhost:3000/api/tcf/explanations --data-binary @CE-T1-Q5.md
+curl -X POST "localhost:3000/api/tcf/explanations?test=1&skill=listening&q=3" --data-binary @-
+````
+
+正文是原始 markdown。定位取自 frontmatter（`test` / `skill` / `question`），
+缺失时取 URL 的 `?test=&skill=&q=`；两者不一致会被拒绝。生成讲解时必须满足：
+
+- `skill` 只能是字面的 `reading` / `listening`
+- `question` 是该套试卷内的序号（1–39），不是全局题号
+- 英文翻译放在标题恰好为 `## 全文翻译` 的段落下，否则 `translation_en` 为 null
+- 不要输出对话式口头禅（如「说 next。」），会原样渲染到页面上
+- 不要把整篇内容包在代码围栏里，首行必须是 `---` 或正文本身
+
 TCF import/TTS pipeline scripts also live in `scripts/` (tracked; their input
 data and `scripts/.tcf-cache/` stay local — copyrighted exam content).
 

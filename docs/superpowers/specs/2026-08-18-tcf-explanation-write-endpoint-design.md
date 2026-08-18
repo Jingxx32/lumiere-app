@@ -106,6 +106,7 @@ frontmatter 解析与 `## 全文翻译` 段落抽取逻辑仍只有一份。
 | frontmatter 字段非法 | 400 | `invalid_format`（附解析器原始消息） |
 | 定位信息缺失 | 400 | `locator_missing` |
 | frontmatter 与 URL 参数冲突 | 400 | `locator_conflict` |
+| URL 参数不完整或非法 | 400 | `invalid_query` |
 | 查无此题 | 404 | `question_not_found` |
 | 命中多行 | 409 | `ambiguous_locator` |
 

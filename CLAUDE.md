@@ -13,6 +13,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Verification** (no test suite): `npx tsc --noEmit && npm run lint`, plus exercising the changed page in the browser.
 - Respond in Chinese (中文) unless the user writes in English.
 
+### Avoiding rework (added 2026-08-18 — the user's top complaint)
+
+Past sessions burned the user's time with a repeated pattern: ship a `feat`, then
+two or three `fix` commits for things that were knowable up front. Root cause: writing
+code before looking at the real inputs and constraints. These three rules are non-negotiable.
+
+1. **Read real samples before writing any parser, importer, or transformer.** Open 3–5
+   actual input files, enumerate the variations found (optional fields, quoting, section
+   shapes, encodings), and show that list to the user before writing code. Do not discover
+   edge cases by shipping. (Cost of skipping it: `6fa5b15` → `45dc45d` → `0846505`.)
+2. **Ask up front about external paths, env vars, and data sources.** Anything that must
+   match something outside the repo cannot be guessed. One blocking question is cheaper
+   than three follow-up `fix` commits. (Cost of skipping it: `86202c5` → `3dd008e` → `aae81d5`.)
+3. **Never claim "done" without running the change over real data and pasting the output.**
+   `tsc --noEmit && npm run lint` passing is not evidence the feature works. With no test
+   suite, the substitute is a real run with counts (processed / succeeded / failed) shown
+   to the user. Same for privacy: inspect the actual staged diff before committing —
+   exam content leaked into git twice (`eab409d`, `9d4f7d5`).
+
+Related: **match the surrounding code before writing, not after review.** Read the existing
+components in the same folder and follow their spacing, composition, and naming idiom, so
+the user isn't left correcting style in a follow-up commit (`fcecc9e` → `70a6a6e`).
+
 ## Project overview
 
 Lumière is an output-driven French learning app. The core loop: read French source material → AI generates a writing task anchored to it → user writes → AI gives structured, classified feedback → every error flows into a persistent learner profile that drives future tasks.

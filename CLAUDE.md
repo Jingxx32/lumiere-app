@@ -70,10 +70,13 @@ curl -X POST "localhost:3000/api/tcf/explanations?test=1&skill=listening&q=3" --
 缺失时取 URL 的 `?test=&skill=&q=`；两者不一致会被拒绝。生成讲解时必须满足：
 
 - `skill` 只能是字面的 `reading` / `listening`
+- `test` 是试卷号：listening 1–42，reading 1–39
 - `question` 是该套试卷内的序号（1–39），不是全局题号
-- 英文翻译放在标题恰好为 `## 全文翻译` 的段落下，否则 `translation_en` 为 null
+- 英文翻译放在标题**文字恰好是 `全文翻译`** 的段落下（`#` 到 `######` 任意级别都认，
+  但文字必须完全一致），否则 `translation_en` 为 null
 - 不要输出对话式口头禅（如「说 next。」），会原样渲染到页面上
 - 不要把整篇内容包在代码围栏里，首行必须是 `---` 或正文本身
+- 正文上限 256KB
 
 TCF import/TTS pipeline scripts also live in `scripts/` (tracked; their input
 data and `scripts/.tcf-cache/` stay local — copyrighted exam content).

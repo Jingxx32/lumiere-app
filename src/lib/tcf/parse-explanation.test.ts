@@ -209,3 +209,13 @@ test("reports the frontmatter problem, not the empty body, when a file has both"
 test("reports an empty body when there is no frontmatter to blame", () => {
   assert.throws(() => parseExplanationFile(""), /empty body/i);
 });
+
+test("reports a missing locator field before an empty body", () => {
+  // Contract: frontmatter defects are surfaced ahead of body defects, uniformly
+  // across skill/test/question. Before this module was refactored, skill was
+  // validated first while test/question were read inside the return literal —
+  // i.e. after the body check. That split was an accident of expression
+  // placement, not a designed ordering, and is deliberately not preserved.
+  assert.throws(() => parseExplanationFile("---\ntest: 1\nskill: reading\n---\n"), /question/i);
+  assert.throws(() => parseExplanationFile("---\nskill: reading\nquestion: 5\n---\n"), /test/i);
+});

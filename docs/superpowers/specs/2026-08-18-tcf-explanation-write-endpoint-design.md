@@ -88,6 +88,12 @@ EOF
 sync 脚本行为与 `parse-explanation.test.ts` 现有断言均不变，
 frontmatter 解析与 `## 全文翻译` 段落抽取逻辑仍只有一份。
 
+报错顺序契约：frontmatter 的问题一律先于正文问题报告（skill / test / question
+任一非法或缺失，都优先于「正文为空」）。重构前 skill 校验在前、而 test/question
+是在 return 字面量里读取因而排在正文检查之后——那是表达式书写位置的副产品，
+不是设计意图，故不予保留。`parseExplanationFile("")` 报「正文为空」是此契约的
+自然结果。
+
 ## 错误码
 
 沿用 `app/api/speaking/assess/route.ts` 的 `Response.json({ error }, { status })` 风格。

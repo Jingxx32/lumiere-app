@@ -21,6 +21,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tcfQuestions, tcfSets } from "@/lib/db/schema";
 import { parseExplanationBody, explanationLocatorLabel } from "@/lib/tcf/parse-explanation";
+import type { ParsedExplanationBody } from "@/lib/tcf/parse-explanation";
 import { resolveExplanationLocator } from "@/lib/tcf/explanation-locator";
 
 /** Hand-written prose with tables; the longest realistic explanation is a few KB. */
@@ -31,6 +32,24 @@ export async function POST(request: Request) {
     return new Response("Not Found", { status: 404 });
   }
 
+  // Route handlers get no CSRF protection — Next's cross-site dev block only
+  // covers /_next and /__nextjs — and a text/plain body is a CORS-simple
+  // request, so no preflight fires. A page the user merely visits could
+  // otherwise overwrite an explanation. Nothing in this app calls this
+  // endpoint from the browser, and curl sends no Origin header, so rejecting
+  // every Origin-bearing request costs the intended caller nothing.
+  if (request.headers.get("origin") !== null) {
+    return Response.json({ error: "cross_origin_forbidden" }, { status: 403 });
+  }
+
+  // request.text() buffers everything before the size check below can run, so
+  // reject an oversized body from its declared length first. The post-read
+  // check stays: Content-Length is client-supplied and may be absent.
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    return Response.json({ error: "body_too_large" }, { status: 413 });
+  }
+
   const raw = await request.text();
   if (raw.trim() === "") {
     return Response.json({ error: "empty_body" }, { status: 400 });
@@ -39,7 +58,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "body_too_large" }, { status: 413 });
   }
 
-  let parsed;
+  let parsed: ParsedExplanationBody;
   try {
     parsed = parseExplanationBody(raw);
   } catch (err) {

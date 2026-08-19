@@ -101,6 +101,7 @@ frontmatter 解析与 `## 全文翻译` 段落抽取逻辑仍只有一份。
 | 状况 | 状态码 | error |
 |---|---|---|
 | 生产环境 | 404 | —（路由不存在） |
+| 带 `Origin` 头（浏览器跨站请求） | 403 | `cross_origin_forbidden` |
 | 空请求体 | 400 | `empty_body` |
 | 超过 256KB | 413 | `body_too_large` |
 | frontmatter 字段非法 | 400 | `invalid_format`（附解析器原始消息） |
@@ -113,7 +114,12 @@ frontmatter 解析与 `## 全文翻译` 段落抽取逻辑仍只有一份。
 ## 安全边界
 
 - 仅开发环境启用，`NODE_ENV === "production"` 时返回 404
-- Next dev server 默认只绑 localhost
+- `npm run dev` 显式绑定 127.0.0.1（`next dev -H 127.0.0.1`）。Next 的默认 hostname 是
+  `0.0.0.0`，会把这个无鉴权端点暴露给整个局域网——早先版本的本文档误称"默认只绑
+  localhost"，那是错的
+- 拒绝任何带 `Origin` 头的请求（403 `cross_origin_forbidden`）。路由处理器不享受
+  Server Actions 的 CSRF 保护，而 `text/plain` body 属 CORS 简单请求、不触发预检，
+  用户访问的任意网页都能发起写入；curl 不发 `Origin`，预期调用方不受影响
 - 写入范围被限制在"已存在题目的 `explanation` + `translation_en` 两列"：
   不能插入新行，不能触碰其它表
 

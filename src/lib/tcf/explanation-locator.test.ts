@@ -64,3 +64,13 @@ test("a malformed URL locator loses even when frontmatter is valid", () => {
   const r = resolveExplanationLocator(BODY, params("test=1&skill=reading"));
   assert.deepEqual(r, { ok: false, error: "invalid_query" });
 });
+
+test("treats an empty parameter value as present but invalid", () => {
+  const r = resolveExplanationLocator(null, params("test=&skill=reading&q=5"));
+  assert.deepEqual(r, { ok: false, error: "invalid_query" });
+});
+
+test("takes the first value when a query key is repeated", () => {
+  const r = resolveExplanationLocator(null, params("test=1&test=2&skill=reading&q=5"));
+  assert.deepEqual(r, { ok: true, locator: { test: 1, skill: "reading", question: 5 } });
+});

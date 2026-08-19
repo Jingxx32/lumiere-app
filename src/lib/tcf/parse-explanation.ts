@@ -106,8 +106,9 @@ export function parseExplanationBody(raw: string): ParsedExplanationBody {
   const match = FRONTMATTER.exec(trimmed);
 
   // Frontmatter is validated before the body-emptiness check so a file with
-  // both a malformed locator and an empty body still reports the locator
-  // problem — the message parseExplanationFile has always produced.
+  // both a malformed locator and an empty body reports the locator problem.
+  // This is uniform across skill/test/question — the pre-refactor split, where
+  // only skill was checked this early, was an accident of expression placement.
   let locator: ExplanationLocator | null = null;
   if (match) {
     const fm: Record<string, string> = {};
@@ -157,6 +158,7 @@ export function explanationLocatorLabel(p: ExplanationLocator): string {
   return `${prefix}-T${p.test}-Q${p.question}`;
 }
 
+/** The canonical on-disk file name for a locator, e.g. `CE-T1-Q5.md`. */
 export function expectedFileName(p: ExplanationLocator): string {
   return `${explanationLocatorLabel(p)}.md`;
 }

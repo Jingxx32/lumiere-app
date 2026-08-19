@@ -18,13 +18,24 @@
  * Pure: no IO, no DB. `written` is informational and deliberately not returned.
  */
 
-export interface ParsedExplanation {
+/** 唯一确定一道题的三元组。 */
+export interface ExplanationLocator {
   test: number;
   skill: "reading" | "listening";
   question: number;
+}
+
+export interface ParsedExplanation extends ExplanationLocator {
   /** Everything after the frontmatter, trimmed — written verbatim to `explanation`. */
   body: string;
   /** Body of the "## 全文翻译" section, or null when the file has none. */
+  translationEn: string | null;
+}
+
+/** 与 ParsedExplanation 的区别：没有 frontmatter 时 locator 为 null 而不是抛错。 */
+export interface ParsedExplanationBody {
+  locator: ExplanationLocator | null;
+  body: string;
   translationEn: string | null;
 }
 
@@ -82,43 +93,72 @@ function unquote(value: string): string {
   return value;
 }
 
-export function parseExplanationFile(raw: string): ParsedExplanation {
+/**
+ * Parse an explanation whose frontmatter is optional.
+ *
+ * The HTTP write endpoint accepts bodies with no frontmatter (the locator then
+ * comes from the URL), so frontmatter absence is a valid state here rather than
+ * an error. `parseExplanationFile` is the stricter wrapper used by the file-based
+ * sync script.
+ */
+export function parseExplanationBody(raw: string): ParsedExplanationBody {
   const trimmed = raw.replace(/^\s+/, "");
   const match = FRONTMATTER.exec(trimmed);
-  if (!match) {
-    throw new Error("explanation file has no --- frontmatter --- block");
+
+  // Frontmatter is validated before the body-emptiness check so a file with
+  // both a malformed locator and an empty body reports the locator problem.
+  // This is uniform across skill/test/question — the pre-refactor split, where
+  // only skill was checked this early, was an accident of expression placement.
+  let locator: ExplanationLocator | null = null;
+  if (match) {
+    const fm: Record<string, string> = {};
+    for (const line of match[1].split(/\r?\n/)) {
+      const sep = line.indexOf(":");
+      if (sep === -1) continue;
+      fm[line.slice(0, sep).trim()] = unquote(line.slice(sep + 1).trim());
+    }
+
+    const skill = readField(fm, "skill");
+    if (skill !== "reading" && skill !== "listening") {
+      throw new Error(
+        `explanation frontmatter "skill" must be reading or listening, got "${skill}"`,
+      );
+    }
+
+    locator = {
+      test: readNumber(fm, "test"),
+      skill,
+      question: readNumber(fm, "question"),
+    };
   }
 
-  const fm: Record<string, string> = {};
-  for (const line of match[1].split(/\r?\n/)) {
-    const sep = line.indexOf(":");
-    if (sep === -1) continue;
-    fm[line.slice(0, sep).trim()] = unquote(line.slice(sep + 1).trim());
-  }
-
-  const skill = readField(fm, "skill");
-  if (skill !== "reading" && skill !== "listening") {
-    throw new Error(`explanation frontmatter "skill" must be reading or listening, got "${skill}"`);
-  }
-
-  const body = trimmed.slice(match[0].length).trim();
+  const body = (match ? trimmed.slice(match[0].length) : trimmed).trim();
   if (body === "") {
     throw new Error("explanation file has an empty body");
   }
 
+  return { locator, body, translationEn: sectionBody(body, TRANSLATION_HEADING) };
+}
+
+export function parseExplanationFile(raw: string): ParsedExplanation {
+  const parsed = parseExplanationBody(raw);
+  if (parsed.locator === null) {
+    throw new Error("explanation file has no --- frontmatter --- block");
+  }
   return {
-    test: readNumber(fm, "test"),
-    skill,
-    question: readNumber(fm, "question"),
-    body,
-    translationEn: sectionBody(body, TRANSLATION_HEADING),
+    ...parsed.locator,
+    body: parsed.body,
+    translationEn: parsed.translationEn,
   };
 }
 
-/** Canonical file name for a locator — CE = compréhension écrite, CO = orale. */
-export function expectedFileName(
-  p: Pick<ParsedExplanation, "test" | "skill" | "question">,
-): string {
+/** Canonical label for a locator — CE = compréhension écrite, CO = orale. */
+export function explanationLocatorLabel(p: ExplanationLocator): string {
   const prefix = p.skill === "reading" ? "CE" : "CO";
-  return `${prefix}-T${p.test}-Q${p.question}.md`;
+  return `${prefix}-T${p.test}-Q${p.question}`;
+}
+
+/** The canonical on-disk file name for a locator, e.g. `CE-T1-Q5.md`. */
+export function expectedFileName(p: ExplanationLocator): string {
+  return `${explanationLocatorLabel(p)}.md`;
 }

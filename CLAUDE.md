@@ -4,6 +4,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
+## Working preferences (from past sessions — follow these)
+
+- **Git commits: NO `Co-Authored-By: Claude` or `Generated with Claude Code` trailers.** The user explicitly asked for this twice (2026-06-20). This overrides the default commit-trailer behavior. Plain conventional-commit messages only.
+- **Plan first, code on "开始".** When the user says 构思 / brainstorm / 探讨 / 审计 / "先不要动手" / "先不着急", do NOT modify code or run mutating commands until they explicitly say 开始/做吧. Pausing for confirmation before spending API credits (TTS, batch enrichment) is expected.
+- **Estimate API costs proactively.** The user is cost-sensitive (OpenAI tokens, Azure free tier). Before proposing any batch AI operation (TTS generation, bulk enrichment, image→text), state a rough cost estimate up front instead of waiting to be asked.
+- **Dev server is usually already running.** The user typically has `npm run dev` on :3000 open in their own browser. Check for an existing server before starting a preview one, and don't insist on opening pages the user says they already have open.
+- **Verification** (no test suite): `npx tsc --noEmit && npm run lint`, plus exercising the changed page in the browser.
+- Respond in Chinese (中文) unless the user writes in English.
+
+### Avoiding rework (added 2026-08-18 — the user's top complaint)
+
+Past sessions burned the user's time with a repeated pattern: ship a `feat`, then
+two or three `fix` commits for things that were knowable up front. Root cause: writing
+code before looking at the real inputs and constraints. These three rules are non-negotiable.
+
+1. **Read real samples before writing any parser, importer, or transformer.** Open 3–5
+   actual input files, enumerate the variations found (optional fields, quoting, section
+   shapes, encodings), and show that list to the user before writing code. Do not discover
+   edge cases by shipping. (Cost of skipping it: `6fa5b15` → `45dc45d` → `0846505`.)
+2. **Ask up front about external paths, env vars, and data sources.** Anything that must
+   match something outside the repo cannot be guessed. One blocking question is cheaper
+   than three follow-up `fix` commits. (Cost of skipping it: `86202c5` → `3dd008e` → `aae81d5`.)
+3. **Never claim "done" without running the change over real data and pasting the output.**
+   `tsc --noEmit && npm run lint` passing is not evidence the feature works. With no test
+   suite, the substitute is a real run with counts (processed / succeeded / failed) shown
+   to the user. Same for privacy: inspect the actual staged diff before committing —
+   exam content leaked into git twice (`eab409d`, `9d4f7d5`).
+
+Related: **match the surrounding code before writing, not after review.** Read the existing
+components in the same folder and follow their spacing, composition, and naming idiom, so
+the user isn't left correcting style in a follow-up commit (`fcecc9e` → `70a6a6e`).
+
 ## Project overview
 
 Lumière is an output-driven French learning app. The core loop: read French source material → AI generates a writing task anchored to it → user writes → AI gives structured, classified feedback → every error flows into a persistent learner profile that drives future tasks.
@@ -24,6 +56,32 @@ npm run db:seed      # Insert sample French documents
 npm run db:seed-rules # Seed the grammar-rules knowledge base
 npm run db:reenrich  # Re-run vocab enrichment for already-enriched entries
 ```
+
+### 写入单题 TCF 讲解
+
+日常逐题写讲解走 dev-only 端点（需 `npm run dev` 开着）：
+
+```bash
+curl -X POST localhost:3000/api/tcf/explanations --data-binary @CE-T1-Q5.md
+curl -X POST "localhost:3000/api/tcf/explanations?test=1&skill=listening&q=3" --data-binary @-
+```
+
+正文是原始 markdown。定位取自 frontmatter（`test` / `skill` / `question`），
+缺失时取 URL 的 `?test=&skill=&q=`；两者不一致会被拒绝。生成讲解时必须满足：
+
+- `skill` 只能是字面的 `reading` / `listening`
+- `test` 是试卷号：listening 1–42，reading 1–39
+- `question` 是该套试卷内的序号（1–39），不是全局题号
+- 英文翻译放在标题**文字恰好是 `全文翻译`** 的段落下（`#` 到 `######` 任意级别都认，
+  但文字必须完全一致），否则 `translation_en` 为 null
+- 不要输出对话式口头禅（如「说 next。」），会原样渲染到页面上
+- 不要把整篇内容包在代码围栏里，首行必须是 `---` 或正文本身
+- 正文上限 256KB
+- **同时把这篇 .md 存进 `TCF_EXPLANATIONS_DIR`，文件名用 `CE-T<试卷号>-Q<题号>.md`
+  （listening 用 `CO-` 前缀）。** 数据库只是投影：重新导入某套试卷会 delete+insert
+  题目并擦掉 explanation 列，届时只能靠 `npm run tcf:explain-sync` 从文件恢复。
+  写错 locator 覆盖了旧讲解时，同样只能靠文件找回。
+- 只走端点、不落文件的讲解，会被 sync 脚本的对账逻辑报成 orphan 警告
 
 TCF import/TTS pipeline scripts also live in `scripts/` (tracked; their input
 data and `scripts/.tcf-cache/` stay local — copyrighted exam content).

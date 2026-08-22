@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import {
-  getTcfDrillQuestions,
   getTcfQuestionById,
-  getTcfDoneQuestionIds,
+  getTcfScheduledDrillQuestions,
+  type TcfDrillSessionKind,
   type TcfLevel,
 } from "@/lib/actions/tcf";
 import { getAllSavedLemmas } from "@/lib/actions/vocabulary";
@@ -23,9 +23,9 @@ const VALID_LEVELS: TcfLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2"];
 export default async function TcfDrillPage({
   searchParams,
 }: {
-  searchParams: Promise<{ skill?: string; level?: string; q?: string }>;
+  searchParams: Promise<{ skill?: string; level?: string; q?: string; round?: string }>;
 }) {
-  const { skill: skillParam, level: levelParam, q } = await searchParams;
+  const { skill: skillParam, level: levelParam, q, round: roundParam } = await searchParams;
   let skill = (skillParam === "reading" ? "reading" : "listening") as "listening" | "reading";
   let level = (VALID_LEVELS.includes(levelParam as TcfLevel) ? levelParam : "A2") as TcfLevel;
 
@@ -39,11 +39,12 @@ export default async function TcfDrillPage({
     }
   }
 
-  const [questions, savedLemmas, doneIds] = await Promise.all([
-    getTcfDrillQuestions(skill, level),
+  const round: TcfDrillSessionKind = roundParam === "20" || roundParam === "review" || roundParam === "all" ? roundParam : "10";
+  const [session, savedLemmas] = await Promise.all([
+    getTcfScheduledDrillQuestions(skill, level, q ? "all" : round),
     getAllSavedLemmas(),
-    getTcfDoneQuestionIds(skill, level),
   ]);
+  const questions = session.questions;
   const qIndex = q ? questions.findIndex((x) => x.id === q) : 0;
   const initialIndex = Math.max(0, qIndex);
   const title = skill === "reading" ? "Compréhension écrite" : "Compréhension orale";
@@ -62,10 +63,17 @@ export default async function TcfDrillPage({
         <h1 className="font-serif text-3xl font-semibold tracking-tight">
           {title} · {level}
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {LEVEL_LABELS[level]} · {questions.length} question{questions.length !== 1 ? "s" : ""}
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">{LEVEL_LABELS[level]} · entraînement par cycles</p>
       </div>
+
+      {!q && (
+        <div className="mb-6 flex flex-wrap gap-2" aria-label="Choisir une session">
+          {(["10", "20", "review", "all"] as const).map((option) => {
+            const label = option === "review" ? "À revoir" : option === "all" ? "Toutes" : `${option} questions`;
+            return <Link key={option} href={`/tcf/drill?skill=${skill}&level=${level}&round=${option}`} className={`rounded-lg border px-3 py-2 text-sm ${round === option ? "border-accent bg-accent-soft text-accent" : "border-border text-muted-foreground hover:text-foreground"}`}>{label}</Link>;
+          })}
+        </div>
+      )}
 
       {questions.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-surface/50 px-8 py-16 text-center">
@@ -79,9 +87,12 @@ export default async function TcfDrillPage({
       ) : (
         <DrillRunner
           questions={questions}
+          learning={session.learning}
+          skill={skill}
+          level={level}
+          kind={round}
           initialIndex={initialIndex}
           savedLemmas={savedLemmas}
-          initialDoneIds={doneIds}
         />
       )}
     </div>

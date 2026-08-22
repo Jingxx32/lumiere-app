@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Eye, EyeOff, Check, X, Loader2, PenLine } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Check, X, Loader2, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ExplanationPanel } from "./explanation-panel";
@@ -11,339 +12,104 @@ import { LevelNav } from "./level-nav";
 import { WordLookupPopover } from "@/components/word-lookup-popover";
 import { recordTcfQuestionAttempt } from "@/lib/actions/tcf";
 import { writeFromTcfPassage } from "@/lib/actions/tasks";
-import type { TcfQuestionForDrill, TcfLevel } from "@/lib/actions/tcf";
+import type { TcfDrillSessionKind, TcfQuestionForDrill, TcfQuestionLearning, TcfLevel } from "@/lib/actions/tcf";
+import type { TcfLearningStatus } from "@/lib/tcf/learning";
 
 const LEVEL_COLORS: Record<TcfLevel, { bg: string; text: string }> = {
-  A1: { bg: "bg-success-soft", text: "text-success" },
-  A2: { bg: "bg-success-soft", text: "text-success" },
-  B1: { bg: "bg-warning-soft", text: "text-warning" },
-  B2: { bg: "bg-warning-soft", text: "text-warning" },
-  C1: { bg: "bg-accent-soft", text: "text-accent" },
-  C2: { bg: "bg-accent-soft", text: "text-accent" },
+  A1: { bg: "bg-success-soft", text: "text-success" }, A2: { bg: "bg-success-soft", text: "text-success" },
+  B1: { bg: "bg-warning-soft", text: "text-warning" }, B2: { bg: "bg-warning-soft", text: "text-warning" },
+  C1: { bg: "bg-accent-soft", text: "text-accent" }, C2: { bg: "bg-accent-soft", text: "text-accent" },
 };
+type RoundResult = { chosen: number; correct: boolean; uncertain: boolean };
 
-const TYPE_LABELS: Record<TcfQuestionForDrill["type"], string> = {
-  image: "Image",
-  spoken_options: "Écoute",
-  dialogue: "Dialogue",
-  reading_mcq: "Lecture",
-};
-
-/** P12c: turn the passage just read into writing material — reuses the whole
- *  task-generation pipeline with the passage as content source. */
 function WritePassageButton({ questionId }: { questionId: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [failed, setFailed] = useState(false);
-
   function handleClick() {
     setFailed(false);
     startTransition(async () => {
-      try {
-        const taskId = await writeFromTcfPassage(questionId);
-        router.push(`/practice?taskId=${taskId}`);
-      } catch {
-        setFailed(true);
-      }
+      try { router.push(`/practice?taskId=${await writeFromTcfPassage(questionId)}`); }
+      catch { setFailed(true); }
     });
   }
-
-  return (
-    <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={pending}
-        className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-surface px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-accent hover:border-accent/40 transition-colors disabled:opacity-60"
-      >
-        {pending ? (
-          <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Génération…</>
-        ) : (
-          <><PenLine className="h-3.5 w-3.5" /> Écrire sur ce texte</>
-        )}
-      </button>
-      {failed && <span className="text-xs text-danger">Échec — réessayez.</span>}
-    </div>
-  );
+  return <div className="flex items-center gap-2"><button type="button" onClick={handleClick} disabled={pending} className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-surface px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-accent disabled:opacity-60">{pending ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Génération…</> : <><PenLine className="h-3.5 w-3.5" />Écrire sur ce texte</>}</button>{failed && <span className="text-xs text-danger">Échec — réessayez.</span>}</div>;
 }
 
 interface DrillRunnerProps {
   questions: TcfQuestionForDrill[];
-  initialIndex?: number;
+  learning: TcfQuestionLearning[];
+  skill: "listening" | "reading";
+  level: TcfLevel;
+  kind: TcfDrillSessionKind;
   savedLemmas?: string[];
-  /** Question ids with recorded attempts — DB-derived "done" marks. */
-  initialDoneIds?: string[];
+  initialIndex?: number;
+  /** The review centre keeps its history panel visible after a response. */
+  showSummaryOnComplete?: boolean;
 }
 
-export function DrillRunner({
-  questions,
-  initialIndex = 0,
-  savedLemmas: initialSavedLemmas = [],
-  initialDoneIds = [],
-}: DrillRunnerProps) {
+export function DrillRunner({ questions, learning, skill, level, kind, savedLemmas: initialSavedLemmas = [], initialIndex = 0, showSummaryOnComplete = true }: DrillRunnerProps) {
+  const storageKey = `tcf-drill:${skill}:${level}:${kind}:${questions.map((q) => q.id).join(",")}`;
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [showAnswer, setShowAnswer] = useState(false);
-  // Option index the user clicked for the current question (undefined = not chosen yet).
-  const [chosen, setChosen] = useState<number | undefined>(undefined);
-  const [savedLemmas, setSavedLemmas] = useState<string[]>(initialSavedLemmas);
+  const [chosen, setChosen] = useState<number>();
+  const [uncertain, setUncertain] = useState(false);
+  const [savedLemmas, setSavedLemmas] = useState(initialSavedLemmas);
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [results, setResults] = useState<Record<string, RoundResult>>({});
+  const [statusByQuestion, setStatusByQuestion] = useState<Record<string, TcfLearningStatus>>(
+    () => Object.fromEntries(learning.map((item) => [item.questionId, item.status])),
+  );
+  const [streakByQuestion, setStreakByQuestion] = useState<Record<string, number>>(
+    () => Object.fromEntries(learning.map((item) => [item.questionId, item.consecutiveConfidentCorrect])),
+  );
   const contentRef = useRef<HTMLDivElement>(null);
-  const [done, setDone] = useState<Set<string>>(() => new Set(initialDoneIds));
 
-  if (questions.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-64 text-muted-foreground">
-        Aucune question disponible.
-      </div>
-    );
-  }
+  useEffect(() => {
+    const saved = window.localStorage.getItem(storageKey);
+    const index = saved ? Number.parseInt(saved, 10) : NaN;
+    if (!Number.isInteger(index) || index < 0 || index >= questions.length) return;
+    const frame = window.requestAnimationFrame(() => setCurrentIndex(index));
+    return () => window.cancelAnimationFrame(frame);
+  }, [questions.length, storageKey]);
+  useEffect(() => { window.localStorage.setItem(storageKey, String(currentIndex)); }, [currentIndex, storageKey]);
 
+  if (questions.length === 0) return <div className="rounded-xl border border-dashed border-border px-6 py-12 text-center text-muted-foreground">Aucune question à revoir pour le moment.</div>;
   const q = questions[currentIndex];
-  const levelColors = LEVEL_COLORS[q.level];
+  const allComplete = completedIds.size === questions.length;
+  const answers = Object.values(results);
 
   function goTo(index: number) {
+    const result = results[questions[index].id];
     setCurrentIndex(index);
-    setShowAnswer(false);
-    setChosen(undefined);
+    setShowAnswer(Boolean(result || completedIds.has(questions[index].id)));
+    setChosen(result?.chosen);
+    setUncertain(result?.uncertain ?? false);
   }
-
-  function toggleAnswer() {
-    const next = !showAnswer;
-    setShowAnswer(next);
-    // Hiding the answer also clears the selection so the question is fresh again.
-    if (!next) setChosen(undefined);
-    // Peeking at the answer is NOT answering — it no longer marks done or
-    // writes an attempt (error-loop spec §4.2).
-  }
-
-  // Clicking an option records the choice and immediately reveals the correct
-  // answer. The attempt is persisted fire-and-forget: losing one row on a
-  // network hiccup beats interrupting the drill.
+  function completeCurrent() { setCompletedIds((previous) => new Set(previous).add(q.id)); }
+  function revealAnswer() { if (!showAnswer) { setShowAnswer(true); completeCurrent(); } }
   function choose(optionIndex: number) {
-    setChosen(optionIndex);
-    setShowAnswer(true);
-    setDone((prev) => (prev.has(q.id) ? prev : new Set(prev).add(q.id)));
-    void recordTcfQuestionAttempt({
-      questionId: q.id,
-      chosen: optionIndex,
-      correct: optionIndex === q.answer,
-    }).catch(() => {});
+    if (showAnswer) return;
+    const correct = optionIndex === q.answer;
+    setChosen(optionIndex); setShowAnswer(true); completeCurrent();
+    setResults((previous) => ({ ...previous, [q.id]: { chosen: optionIndex, correct, uncertain } }));
+    const nextStreak = correct && !uncertain ? (streakByQuestion[q.id] ?? 0) + 1 : 0;
+    setStreakByQuestion((previous) => ({ ...previous, [q.id]: nextStreak }));
+    setStatusByQuestion((previous) => ({
+      ...previous,
+      [q.id]: !correct || uncertain ? "needs_review" : nextStreak >= 3 ? "stable" : "in_progress",
+    }));
+    void recordTcfQuestionAttempt({ questionId: q.id, chosen: optionIndex, uncertain, mode: kind === "review" ? "review" : "drill" }).catch(() => {});
   }
 
-  return (
-    <div className="flex gap-6 min-h-0">
-      {/* Left nav */}
-      <LevelNav
-        questions={questions}
-        currentIndex={currentIndex}
-        onSelect={goTo}
-        doneIds={done}
-      />
+  if (allComplete && showSummaryOnComplete) {
+    const correct = answers.filter((answer) => answer.correct).length;
+    const uncertainCorrect = answers.filter((answer) => answer.correct && answer.uncertain).length;
+    const incorrect = answers.filter((answer) => !answer.correct).length;
+    const needsReview = answers.filter((answer) => !answer.correct || answer.uncertain).length;
+    return <section className="mx-auto max-w-xl rounded-2xl border border-border/70 bg-surface px-8 py-10 text-center"><p className="text-xs uppercase tracking-widest text-subtle-foreground">Session terminée</p><h2 className="mt-2 font-serif text-3xl font-semibold">{questions.length} questions parcourues</h2><p className="mt-5 text-sm text-muted-foreground">{correct} correctes · {uncertainCorrect} correctes mais incertaines · {incorrect} incorrectes</p><p className="mt-2 text-sm text-danger">{needsReview} question{needsReview !== 1 ? "s" : ""} à revoir</p><div className="mt-7 flex justify-center gap-3"><Link href={`/tcf/review?skill=${skill}&level=${level}`} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground">Revoir maintenant</Link><Link href={`/tcf?skill=${skill}`} className="rounded-lg border border-border px-4 py-2 text-sm font-medium">Retour au niveau</Link></div></section>;
+  }
 
-      {/* Main question area */}
-      <div className="flex-1 min-w-0">
-        {/* Header bar */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <span className="font-serif text-lg font-semibold text-foreground">
-              Q{currentIndex + 1}
-            </span>
-            <span className="text-xs text-subtle-foreground">
-              Test {q.testNumber} · {q.orderIndex}
-            </span>
-            <span className={cn("rounded px-1.5 py-0.5 text-xs font-bold font-mono", levelColors.bg, levelColors.text)}>
-              {q.level}
-            </span>
-            <span className="rounded bg-surface-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-              {TYPE_LABELS[q.type]}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={toggleAnswer}
-            className={cn(
-              "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-              showAnswer
-                ? "border-accent/40 bg-accent-soft text-accent"
-                : "border-border/60 bg-surface text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {showAnswer ? (
-              <><EyeOff className="h-3.5 w-3.5" /> Masquer réponse</>
-            ) : (
-              <><Eye className="h-3.5 w-3.5" /> Afficher réponse</>
-            )}
-          </button>
-        </div>
-
-        {/* Question card */}
-        <div ref={contentRef} className="rounded-xl border border-border/70 bg-surface px-6 py-5 space-y-4">
-          {/* Instruction */}
-          <p data-selectable className="text-sm text-muted-foreground italic">{q.questionText}</p>
-
-          {/* Image (image type) */}
-          {q.type === "image" && (
-            <div className="rounded-lg overflow-hidden border border-border/50 bg-surface-muted">
-              {q.imagePath ? (
-                <Image
-                  src={q.imagePath}
-                  alt={`Question ${q.orderIndex} image`}
-                  width={600}
-                  height={400}
-                  className="w-full object-contain max-h-64"
-                  unoptimized
-                />
-              ) : (
-                <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
-                  Image non disponible
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Reading — text passage or document image */}
-          {q.type === "reading_mcq" && q.passage && (
-            <div className="space-y-2">
-              <article className="reading-prose rounded-lg border border-border/50 bg-surface-muted/40 px-5 py-4 whitespace-pre-wrap">
-                {q.passage}
-              </article>
-              <WritePassageButton questionId={q.id} />
-            </div>
-          )}
-          {q.type === "reading_mcq" && !q.passage && q.imagePath && (
-            <div className="rounded-lg overflow-hidden border border-border/50 bg-surface-muted">
-              <Image
-                src={q.imagePath}
-                alt={`Document question ${q.orderIndex}`}
-                width={800}
-                height={520}
-                className="w-full object-contain"
-                unoptimized
-              />
-            </div>
-          )}
-
-          {/* Audio placeholder — listening only */}
-          {q.type !== "reading_mcq" &&
-            (q.audioPath ? (
-              <audio controls src={q.audioPath} className="w-full" />
-            ) : (
-              <div className="flex items-center gap-2 rounded-lg border border-dashed border-border/60 bg-surface-muted/40 px-4 py-3">
-                <div className="h-8 w-8 rounded-full bg-surface-muted flex items-center justify-center">
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 text-muted-foreground" fill="currentColor">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </div>
-                <p className="text-xs text-muted-foreground">Audio à générer (§6)</p>
-              </div>
-            ))}
-
-          {/* Options
-              dialogue: text always visible; answer highlight on reveal
-              image / spoken_options: options are audio-only in the real exam —
-              show only A/B/C/D by default; reveal text + highlight on answer toggle */}
-          <div className="space-y-1.5">
-            {q.options.map((option, i) => {
-              const letter = String.fromCharCode(65 + i);
-              const isCorrect = i === q.answer;
-              const isChosen = chosen === i;
-              const isWrongChoice = showAnswer && isChosen && !isCorrect;
-              const audioOnly = q.type === "image" || q.type === "spoken_options";
-              const showText = !audioOnly || showAnswer;
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => choose(i)}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-sm text-left transition-colors",
-                    showAnswer && isCorrect
-                      ? "border-success/40 bg-success-soft text-success"
-                      : isWrongChoice
-                        ? "border-danger/40 bg-danger-soft text-danger"
-                        : "border-border/60 bg-surface text-foreground hover:border-accent/30 hover:bg-accent-soft/40 cursor-pointer",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-medium",
-                      showAnswer && isCorrect
-                        ? "border-success text-success"
-                        : isWrongChoice
-                          ? "border-danger text-danger"
-                          : "border-border",
-                    )}
-                  >
-                    {showAnswer && isCorrect ? (
-                      <Check className="h-3 w-3" />
-                    ) : isWrongChoice ? (
-                      <X className="h-3 w-3" />
-                    ) : (
-                      letter
-                    )}
-                  </span>
-                  {showText ? (
-                    <span data-selectable>{option}</span>
-                  ) : (
-                    <span className="text-muted-foreground">
-                      {q.type === "spoken_options" ? "Réponse" : "Proposition"} {letter}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Transcript (reveal on answer) */}
-          {showAnswer && q.transcript && (
-            <div className="rounded-lg border border-border/50 bg-surface-muted/60 px-4 py-3">
-              <p className="text-[11px] uppercase tracking-widest text-subtle-foreground font-medium mb-1.5">
-                Transcription
-              </p>
-              <p className="text-sm font-serif leading-relaxed text-foreground whitespace-pre-wrap">
-                {q.transcript}
-              </p>
-            </div>
-          )}
-
-          {/* Explanation (reveal on answer) */}
-          {showAnswer && q.explanation && <ExplanationPanel markdown={q.explanation} />}
-        </div>
-
-        <WordLookupPopover
-          containerRef={contentRef}
-          source={{ type: "tcf", tcfQuestionId: q.id }}
-          savedLemmas={savedLemmas}
-          onSaved={(lemma) =>
-            setSavedLemmas((prev) => (prev.includes(lemma) ? prev : [...prev, lemma]))
-          }
-        />
-
-        {/* Prev / Next */}
-        <div className="flex items-center justify-between mt-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => goTo(currentIndex - 1)}
-            disabled={currentIndex === 0}
-          >
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            Précédent
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            {currentIndex + 1} / {questions.length}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => goTo(currentIndex + 1)}
-            disabled={currentIndex === questions.length - 1}
-          >
-            Suivant
-            <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
+  const colors = LEVEL_COLORS[q.level];
+  return <div className="flex gap-6 min-h-0"><LevelNav questions={questions} currentIndex={currentIndex} onSelect={goTo} statusByQuestion={statusByQuestion} completedIds={completedIds} /><div className="flex-1 min-w-0"><div className="flex items-center justify-between mb-4"><div className="flex items-center gap-2"><span className="font-serif text-lg font-semibold">Question {currentIndex + 1} de {questions.length}</span><span className="text-xs text-subtle-foreground">Test {q.testNumber} · {q.orderIndex}</span><span className={cn("rounded px-1.5 py-0.5 text-xs font-bold font-mono", colors.bg, colors.text)}>{q.level}</span></div>{!showAnswer && <button type="button" onClick={revealAnswer} className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-surface px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"><Eye className="h-3.5 w-3.5" />Afficher réponse</button>}</div><div ref={contentRef} className="rounded-xl border border-border/70 bg-surface px-6 py-5 space-y-4"><p data-selectable className="text-sm text-muted-foreground italic">{q.questionText}</p>{q.type === "image" && q.imagePath && <Image src={q.imagePath} alt={`Question ${q.orderIndex} image`} width={600} height={400} className="w-full max-h-64 object-contain rounded-lg border border-border/50" unoptimized />}{q.type === "reading_mcq" && q.passage && <div className="space-y-2"><article className="reading-prose rounded-lg border border-border/50 bg-surface-muted/40 px-5 py-4 whitespace-pre-wrap">{q.passage}</article><WritePassageButton questionId={q.id} /></div>}{q.type === "reading_mcq" && !q.passage && q.imagePath && <Image src={q.imagePath} alt={`Document question ${q.orderIndex}`} width={800} height={520} className="w-full object-contain rounded-lg border border-border/50" unoptimized />}{q.type !== "reading_mcq" && (q.audioPath ? <audio controls src={q.audioPath} className="w-full" /> : <p className="rounded-lg border border-dashed border-border/60 px-4 py-3 text-xs text-muted-foreground">Audio à générer</p>)}{!showAnswer && <label className="flex items-center gap-2 rounded-lg bg-warning-soft/50 px-3 py-2 text-sm"><input type="checkbox" checked={uncertain} onChange={(event) => setUncertain(event.target.checked)} />Je ne suis pas sûr·e / Je devine</label>}<div className="space-y-1.5">{q.options.map((option, index) => { const isCorrect = index === q.answer; const isChosen = chosen === index; const wrong = showAnswer && isChosen && !isCorrect; const audioOnly = q.type === "image" || q.type === "spoken_options"; return <button key={index} type="button" disabled={showAnswer} onClick={() => choose(index)} className={cn("flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-default", showAnswer && isCorrect ? "border-success/40 bg-success-soft text-success" : wrong ? "border-danger/40 bg-danger-soft text-danger" : "border-border/60 bg-surface hover:border-accent/30 hover:bg-accent-soft/40")}><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-medium">{showAnswer && isCorrect ? <Check className="h-3 w-3" /> : wrong ? <X className="h-3 w-3" /> : String.fromCharCode(65 + index)}</span>{audioOnly && !showAnswer ? <span className="text-muted-foreground">Proposition {String.fromCharCode(65 + index)}</span> : <span data-selectable>{option}</span>}</button>; })}</div>{showAnswer && chosen === undefined && <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-muted-foreground">Réponse consultée : aucune tentative n’a été enregistrée et les choix sont verrouillés.</p>}{showAnswer && q.transcript && <div className="rounded-lg border border-border/50 bg-surface-muted/60 px-4 py-3"><p className="text-[11px] uppercase tracking-widest text-subtle-foreground">Transcription</p><p className="mt-1 text-sm font-serif whitespace-pre-wrap">{q.transcript}</p></div>}{showAnswer && q.explanation && <ExplanationPanel markdown={q.explanation} />}</div><WordLookupPopover containerRef={contentRef} source={{ type: "tcf", tcfQuestionId: q.id }} savedLemmas={savedLemmas} onSaved={(lemma) => setSavedLemmas((previous) => previous.includes(lemma) ? previous : [...previous, lemma])} /><div className="mt-4 flex items-center justify-between"><Button variant="outline" size="sm" onClick={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}><ChevronLeft className="mr-1 h-4 w-4" />Précédent</Button><span className="text-xs text-muted-foreground">{completedIds.size} / {questions.length} parcourues</span><Button variant="outline" size="sm" onClick={() => goTo(currentIndex + 1)} disabled={currentIndex === questions.length - 1}>Suivant<ChevronRight className="ml-1 h-4 w-4" /></Button></div></div></div>;
 }

@@ -1,85 +1,36 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import type { TcfQuestionForDrill, TcfLevel } from "@/lib/actions/tcf";
+import type { TcfQuestionForDrill } from "@/lib/actions/tcf";
+import type { TcfLearningStatus } from "@/lib/tcf/learning";
 
 interface LevelNavProps {
   questions: TcfQuestionForDrill[];
   currentIndex: number;
   onSelect: (index: number) => void;
-  /** Ids of questions with at least one recorded attempt (DB-derived). */
-  doneIds: Set<string>;
+  statusByQuestion: Record<string, TcfLearningStatus>;
+  completedIds: Set<string>;
 }
 
-const LEVEL_ORDER: TcfLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2"];
-
-const LEVEL_COLORS: Record<TcfLevel, string> = {
-  A1: "text-success",
-  A2: "text-success",
-  B1: "text-warning",
-  B2: "text-warning",
-  C1: "text-accent",
-  C2: "text-accent",
+const STATUS_STYLE: Record<TcfLearningStatus, string> = {
+  unseen: "bg-surface-muted text-muted-foreground hover:bg-accent-soft hover:text-accent",
+  needs_review: "bg-danger-soft text-danger hover:bg-danger-soft",
+  in_progress: "bg-warning-soft text-warning hover:bg-warning-soft",
+  stable: "bg-success-soft text-success hover:bg-success-soft",
 };
 
-export function LevelNav({
-  questions,
-  currentIndex,
-  onSelect,
-  doneIds,
-}: LevelNavProps) {
-  // Group by level in fixed order
-  const byLevel: Record<string, Array<{ q: TcfQuestionForDrill; idx: number }>> = {};
-  questions.forEach((q, idx) => {
-    if (!byLevel[q.level]) byLevel[q.level] = [];
-    byLevel[q.level].push({ q, idx });
-  });
-
-  const doneCount = questions.reduce((n, q) => (doneIds.has(q.id) ? n + 1 : n), 0);
-
+export function LevelNav({ questions, currentIndex, onSelect, statusByQuestion, completedIds }: LevelNavProps) {
+  const answeredCount = questions.reduce((count, question) => count + (completedIds.has(question.id) ? 1 : 0), 0);
+  const reviewCount = questions.reduce((count, question) => count + (statusByQuestion[question.id] === "needs_review" ? 1 : 0), 0);
   return (
-    <nav className="w-[180px] shrink-0 space-y-4">
-      {/* Done summary — answer history is a data asset now, so no "clear" */}
-      <div className="flex items-center h-5">
-        <span className="text-[11px] text-muted-foreground">
-          {doneCount > 0 ? `${doneCount} fait${doneCount > 1 ? "s" : ""}` : " "}
-        </span>
-      </div>
-
-      {LEVEL_ORDER.filter((l) => byLevel[l]).map((level) => (
-        <div key={level}>
-          <p className={cn("text-[11px] uppercase tracking-widest font-medium mb-1.5", LEVEL_COLORS[level])}>
-            {level}
-          </p>
-          <div className="flex flex-wrap gap-1">
-            {byLevel[level].map(({ q, idx }, posInLevel) => {
-              const isCurrent = idx === currentIndex;
-              const isDone = doneIds.has(q.id);
-              return (
-                <button
-                  key={q.id}
-                  type="button"
-                  onClick={() => onSelect(idx)}
-                  title={`Test ${q.testNumber} Q${q.orderIndex}${isDone ? " · fait" : ""}`}
-                  className={cn(
-                    "relative h-7 w-7 rounded text-xs font-medium transition-colors",
-                    isCurrent
-                      ? "bg-accent text-accent-foreground"
-                      : isDone
-                        ? "bg-success-soft text-success hover:bg-success-soft"
-                        : "bg-surface-muted text-muted-foreground hover:bg-accent-soft hover:text-accent",
-                  )}
-                >
-                  {posInLevel + 1}
-                  {isDone && !isCurrent && (
-                    <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-success" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+    <nav className="w-[180px] shrink-0 space-y-4" aria-label="Navigation des questions">
+      <div className="space-y-1 text-[11px] text-muted-foreground"><p>{answeredCount} répondue{answeredCount > 1 ? "s" : ""}</p><p className={reviewCount > 0 ? "text-danger" : undefined}>{reviewCount} à revoir</p></div>
+      <div className="flex flex-wrap gap-1">{questions.map((question, index) => {
+        const isCurrent = index === currentIndex;
+        const status = statusByQuestion[question.id] ?? "unseen";
+        return <button key={question.id} type="button" onClick={() => onSelect(index)} title={`Question ${index + 1} · ${status.replace("_", " ")}`} className={cn("relative h-7 w-7 rounded text-xs font-medium transition-colors", isCurrent ? "bg-accent text-accent-foreground" : STATUS_STYLE[status])}>{index + 1}{completedIds.has(question.id) && !isCurrent && <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-current" />}</button>;
+      })}</div>
+      <p className="text-[10px] leading-relaxed text-subtle-foreground">Gris · non abordée<br />Orange · en cours<br />Rouge · à revoir<br />Vert · stable</p>
     </nav>
   );
 }

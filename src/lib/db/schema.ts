@@ -502,7 +502,7 @@ export type TcfAttempt = typeof tcfAttempts.$inferSelect;
 
 /* One row per answered question — drill answers write-through, exam answers
  * batch on submit. The foundation of the TCF error loop (spec §3.1). */
-export const tcfAttemptModeEnum = pgEnum("tcf_attempt_mode", ["drill", "exam"]);
+export const tcfAttemptModeEnum = pgEnum("tcf_attempt_mode", ["drill", "review", "exam"]);
 
 export const tcfQuestionAttempts = pgTable(
   "tcf_question_attempts",
@@ -522,6 +522,8 @@ export const tcfQuestionAttempts = pgTable(
     /** Denormalised on purpose: aggregations skip a join, and history keeps
      *  the verdict as judged even if a question's answer is later corrected. */
     correct: boolean("correct").notNull(),
+    /** A correct guess still counts for accuracy, but is scheduled like a wrong answer. */
+    uncertain: boolean("uncertain").notNull().default(false),
     answeredAt: timestamp("answered_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

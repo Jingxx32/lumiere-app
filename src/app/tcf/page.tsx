@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Headphones, BookOpenText } from "lucide-react";
-import { getTcfLevelSummaries, listTcfSets, type TcfLevel } from "@/lib/actions/tcf";
+import { getTcfLevelSummaries, getTcfReviewCount, listTcfSets, type TcfLevel } from "@/lib/actions/tcf";
 import { Card } from "@/components/ui/card";
 
 const LEVEL_COLORS: Record<TcfLevel, { bg: string; text: string; border: string }> = {
@@ -36,9 +36,10 @@ export default async function TcfPage({
   const meta = SKILLS[skill];
   const Icon = meta.icon;
 
-  const [summaries, sets] = await Promise.all([
+  const [summaries, sets, reviewCount] = await Promise.all([
     getTcfLevelSummaries(skill),
     listTcfSets(skill),
+    getTcfReviewCount(skill),
   ]);
 
   return (
@@ -48,6 +49,11 @@ export default async function TcfPage({
         <h1 className="font-serif text-4xl font-semibold tracking-tight">TCF Canada</h1>
       </div>
       <p className="text-sm text-muted-foreground mb-6">{meta.title} — par niveau CECR</p>
+
+      <Link href={`/tcf/review?skill=${skill}`} className="mb-6 flex w-fit items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm hover:border-accent/40">
+        <span>Centre de révision</span>
+        <span className={reviewCount > 0 ? "text-danger font-medium" : "text-muted-foreground"}>{reviewCount} à revoir</span>
+      </Link>
 
       <h2 className="text-xs uppercase tracking-widest text-subtle-foreground font-medium mb-4">
         {meta.levelVerb} · Choisissez un niveau
